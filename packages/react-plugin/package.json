@@ -10,13 +10,13 @@
   ],
   "license": "ISC",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/react-plugin.js",
+  "module": "dist/react-plugin.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/react-plugin.js"
     }
   },
   "files": [
