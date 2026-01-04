@@ -43,13 +43,13 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 const engine = new Motion3DChallenge();
-const tokenManager = createChallengeTokenManager({
+const tokenManager = createChallengeTokenManager<{ sessionId: string }>({
   secret: process.env.CHALLENGE_JWT_SECRET ?? 'dev-only-change-me',
   tokenTtlSec: 20,
   successTokenTtlSec: 60
 });
 
-const router = createChallengeExpressRouter({
+const router = createChallengeExpressRouter<{ sessionId: string }>({
   challenge: engine,
   tokenManager,
   onVerified: async ({ req }) => {
@@ -89,6 +89,7 @@ app.use(router);
 - Challenge tokens are encrypted with the provided secret.
 - Success tokens are encoded only (alg "none"), intended as a short-lived hint to skip cold start.
 - Use `validateSuccessToken` to bind success tokens to your own session or user data.
+- Success tokens are invalidated after 3 consecutive failed verifications tied to them.
 - Failed verification blacklists the challenge token JTI until expiry.
 
 ## API options
@@ -98,6 +99,7 @@ app.use(router);
 - `secret` (required): encryption key for challenge tokens.
 - `tokenTtlSec` (default 20): challenge token lifetime.
 - `successTokenTtlSec` (default 60): success token lifetime.
+- Pass a generic type parameter to type the success token payload.
 
 `createChallengeExpressRouter(options)`
 
@@ -106,3 +108,4 @@ app.use(router);
 - `onVerified`: optional callback; return `undefined` for default success token, object to override TTL/payload, or `null` to skip.
 - `validateSuccessToken`: optional validator for decoded success token payloads.
 - `debug`: `"none"` | `"error"` | `"info"` (default `"none"`).
+- Pass a matching generic type parameter to type `SuccessTokenPayload`.

@@ -9,16 +9,16 @@ export type ChallengeTokenPayload = {
   exp: number;
 };
 
-export type SuccessTokenPayload = {
+export type SuccessTokenPayload<TPayload extends Record<string, unknown> = Record<string, unknown>> = {
   jti: string;
   exp: number;
   kind: 'success';
-  payload?: Record<string, unknown>;
+  payload?: TPayload;
 };
 
-export type SuccessTokenIssueOptions = {
+export type SuccessTokenIssueOptions<TPayload extends Record<string, unknown> = Record<string, unknown>> = {
   expiresInSec?: number;
-  payload?: Record<string, unknown>;
+  payload?: TPayload;
 };
 
 export type ChallengeTokenManagerOptions = {
@@ -27,15 +27,20 @@ export type ChallengeTokenManagerOptions = {
   successTokenTtlSec?: number;
 };
 
-export type ChallengeTokenManager = {
-  issueToken: (hitbox: Hitbox) => Promise<{ token: string; expiresAt: number; expiresInMs: number }>;
+export type ChallengeTokenManager<TPayload extends Record<string, unknown> = Record<string, unknown>> = {
+  issueToken: (hitbox: Hitbox) => Promise<{
+    token: string;
+    jti: string;
+    expiresAt: number;
+    expiresInMs: number;
+  }>;
   decryptToken: (token: string) => Promise<ChallengeTokenPayload>;
-  issueSuccessToken: (options?: SuccessTokenIssueOptions) => Promise<{
+  issueSuccessToken: (options?: SuccessTokenIssueOptions<TPayload>) => Promise<{
     token: string;
     expiresAt: number;
     expiresInMs: number;
   }>;
-  decodeSuccessToken: (token: string) => SuccessTokenPayload;
+  decodeSuccessToken: (token: string) => SuccessTokenPayload<TPayload>;
   blacklistToken: (jti: string, expiresAt: number) => void;
   isBlacklisted: (jti: string) => boolean;
   prune: () => void;
@@ -74,24 +79,28 @@ export type SuccessTokenValidationContext = {
   res: Response;
 };
 
-export type ChallengeExpressAdapterOptions = {
+export type ChallengeExpressAdapterOptions<TPayload extends Record<string, unknown> = Record<string, unknown>> = {
   challenge: ChallengeEngine;
-  tokenManager: ChallengeTokenManager;
+  tokenManager: ChallengeTokenManager<TPayload>;
   onVerified?: (
     context: ChallengeVerifyContext
-  ) => Promise<SuccessTokenIssueOptions | null | undefined> | SuccessTokenIssueOptions | null | undefined;
+  ) =>
+    | Promise<SuccessTokenIssueOptions<TPayload> | null | undefined>
+    | SuccessTokenIssueOptions<TPayload>
+    | null
+    | undefined;
   validateSuccessToken?: (
-    payload: SuccessTokenPayload,
+    payload: SuccessTokenPayload<TPayload>,
     context: SuccessTokenValidationContext
   ) => Promise<boolean> | boolean;
   debug?: ChallengeDebugLevel;
 };
 
-export const createChallengeTokenManager = ({
+export const createChallengeTokenManager = <TPayload extends Record<string, unknown> = Record<string, unknown>>({
   secret,
   tokenTtlSec = 20,
   successTokenTtlSec = 60
-}: ChallengeTokenManagerOptions): ChallengeTokenManager => {
+}: ChallengeTokenManagerOptions): ChallengeTokenManager<TPayload> => {
   const jwtKey = createHash('sha256').update(secret).digest();
   const blacklist = new Map<string, number>();
 
@@ -104,7 +113,9 @@ export const createChallengeTokenManager = ({
     }
   };
 
-  const issueToken = async (hitbox: Hitbox): Promise<{ token: string; expiresAt: number; expiresInMs: number }> => {
+  const issueToken = async (
+    hitbox: Hitbox
+  ): Promise<{ token: string; jti: string; expiresAt: number; expiresInMs: number }> => {
     const jti = randomUUID();
     const issuedAt = Math.floor(Date.now() / 1000);
     const exp = issuedAt + tokenTtlSec;
@@ -115,7 +126,7 @@ export const createChallengeTokenManager = ({
       .setExpirationTime(exp)
       .setJti(jti)
       .encrypt(jwtKey);
-    return { token, expiresAt, expiresInMs: tokenTtlSec * 1000 };
+    return { token, jti, expiresAt, expiresInMs: tokenTtlSec * 1000 };
   };
 
   const decryptToken = async (token: string): Promise<ChallengeTokenPayload> => {
@@ -133,7 +144,7 @@ export const createChallengeTokenManager = ({
   };
 
   const issueSuccessToken = async (
-    options: SuccessTokenIssueOptions = {}
+    options: SuccessTokenIssueOptions<TPayload> = {}
   ): Promise<{ token: string; expiresAt: number; expiresInMs: number }> => {
     const jti = randomUUID();
     const issuedAt = Math.floor(Date.now() / 1000);
@@ -143,7 +154,7 @@ export const createChallengeTokenManager = ({
         : successTokenTtlSec;
     const exp = issuedAt + expiresInSec;
     const expiresAt = exp * 1000;
-    const payload: SuccessTokenPayload = {
+    const payload: SuccessTokenPayload<TPayload> = {
       jti,
       exp,
       kind: 'success',
@@ -157,8 +168,8 @@ export const createChallengeTokenManager = ({
     return { token, expiresAt, expiresInMs: expiresInSec * 1000 };
   };
 
-  const decodeSuccessToken = (token: string): SuccessTokenPayload => {
-    const { payload } = UnsecuredJWT.decode<SuccessTokenPayload>(token);
+  const decodeSuccessToken = (token: string): SuccessTokenPayload<TPayload> => {
+    const { payload } = UnsecuredJWT.decode<SuccessTokenPayload<TPayload>>(token);
     if (!payload || typeof payload !== 'object') {
       throw new Error('invalid-success-token');
     }
@@ -166,7 +177,7 @@ export const createChallengeTokenManager = ({
     const jti = payload.jti as string | undefined;
     const exp = payload.exp as number | undefined;
     const payloadData =
-      payload.payload && typeof payload.payload === 'object' ? (payload.payload as Record<string, unknown>) : undefined;
+      payload.payload && typeof payload.payload === 'object' ? (payload.payload as TPayload) : undefined;
     if (kind !== 'success' || typeof jti !== 'string' || typeof exp !== 'number') {
       throw new Error('invalid-success-token');
     }
@@ -200,15 +211,24 @@ const wait = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
-export const createChallengeExpressRouter = ({
+export const createChallengeExpressRouter = <TPayload extends Record<string, unknown> = Record<string, unknown>>({
   challenge,
   tokenManager,
   onVerified,
   validateSuccessToken,
   debug = 'none'
-}: ChallengeExpressAdapterOptions): Router => {
+}: ChallengeExpressAdapterOptions<TPayload>): Router => {
   const router = express.Router();
   const minGenerationMs = 5000;
+  const maxSuccessFailures = 3;
+  const successTokenState = new Map<
+    string,
+    { expiresAt: number; consecutiveFailures: number; invalidated: boolean }
+  >();
+  const challengeSuccessLinks = new Map<
+    string,
+    { successJti: string; successExpiresAt: number; challengeExpiresAt: number }
+  >();
 
   const logInfo = (...args: unknown[]) => {
     if (debug === 'info') {
@@ -222,27 +242,96 @@ export const createChallengeExpressRouter = ({
     }
   };
 
+  const pruneSuccessState = () => {
+    const now = Date.now();
+    for (const [jti, state] of successTokenState.entries()) {
+      if (state.expiresAt <= now) {
+        successTokenState.delete(jti);
+      }
+    }
+    for (const [challengeJti, link] of challengeSuccessLinks.entries()) {
+      if (link.challengeExpiresAt <= now || link.successExpiresAt <= now) {
+        challengeSuccessLinks.delete(challengeJti);
+      }
+    }
+  };
+
+  const registerSuccessToken = (jti: string, expiresAt: number) => {
+    const existing = successTokenState.get(jti);
+    if (existing) {
+      existing.expiresAt = Math.max(existing.expiresAt, expiresAt);
+      successTokenState.set(jti, existing);
+      return;
+    }
+    successTokenState.set(jti, {
+      expiresAt,
+      consecutiveFailures: 0,
+      invalidated: false
+    });
+  };
+
+  const isSuccessTokenInvalidated = (jti: string): boolean => {
+    return successTokenState.get(jti)?.invalidated ?? false;
+  };
+
+  const recordSuccessTokenResult = (jti: string, expiresAt: number, success: boolean) => {
+    const state = successTokenState.get(jti) ?? {
+      expiresAt,
+      consecutiveFailures: 0,
+      invalidated: false
+    };
+    state.expiresAt = Math.max(state.expiresAt, expiresAt);
+    if (success) {
+      state.consecutiveFailures = 0;
+    } else if (!state.invalidated) {
+      state.consecutiveFailures += 1;
+      if (state.consecutiveFailures >= maxSuccessFailures) {
+        state.invalidated = true;
+      }
+    }
+    successTokenState.set(jti, state);
+    if (!success && state.invalidated) {
+      logInfo('[success-token] invalidated', { jti, failures: state.consecutiveFailures });
+    }
+  };
+
   router.get('/challenge', async (req, res) => {
     try {
       const requestStart = Date.now();
       tokenManager.prune();
+      pruneSuccessState();
       let hasValidSuccessToken = false;
+      let successTokenContext: { jti: string; expMs: number } | null = null;
       const successTokenHeader = req.header('x-challenge-success-token');
       if (successTokenHeader) {
         try {
           const successPayload = tokenManager.decodeSuccessToken(successTokenHeader);
-          if (successPayload.exp * 1000 > Date.now()) {
-            const validation = validateSuccessToken
-              ? await validateSuccessToken(successPayload, { req, res })
-              : true;
-            hasValidSuccessToken = validation;
+          const successExpMs = successPayload.exp * 1000;
+          if (successExpMs > Date.now()) {
+            registerSuccessToken(successPayload.jti, successExpMs);
+            if (!isSuccessTokenInvalidated(successPayload.jti)) {
+              const validation = validateSuccessToken
+                ? await validateSuccessToken(successPayload, { req, res })
+                : true;
+              if (validation) {
+                hasValidSuccessToken = true;
+                successTokenContext = { jti: successPayload.jti, expMs: successExpMs };
+              }
+            }
           }
         } catch {
           hasValidSuccessToken = false;
         }
       }
       const { videoBuffer, hitbox, debug: renderDebug } = await challenge.generate();
-      const { token, expiresAt, expiresInMs } = await tokenManager.issueToken(hitbox);
+      const { token, jti, expiresAt, expiresInMs } = await tokenManager.issueToken(hitbox);
+      if (hasValidSuccessToken && successTokenContext) {
+        challengeSuccessLinks.set(jti, {
+          successJti: successTokenContext.jti,
+          successExpiresAt: successTokenContext.expMs,
+          challengeExpiresAt: expiresAt
+        });
+      }
       if (!hasValidSuccessToken) {
         const elapsed = Date.now() - requestStart;
         const remaining = Math.max(0, minGenerationMs - elapsed);
@@ -273,6 +362,7 @@ export const createChallengeExpressRouter = ({
     try {
       const payload = await tokenManager.decryptToken(token);
       tokenManager.prune();
+      pruneSuccessState();
       const expiresAt = payload.exp * 1000;
       if (tokenManager.isBlacklisted(payload.jti)) {
         res.status(401).json({ error: 'token-blacklisted', reload: true });
@@ -280,6 +370,11 @@ export const createChallengeExpressRouter = ({
       }
 
       const success = challenge.validate({ x, y }, payload.hitbox);
+      const successLink = challengeSuccessLinks.get(payload.jti);
+      if (successLink) {
+        recordSuccessTokenResult(successLink.successJti, successLink.successExpiresAt, success);
+        challengeSuccessLinks.delete(payload.jti);
+      }
       let successToken: { token: string; expiresAt: number; expiresInMs: number } | null = null;
       if (!success) {
         tokenManager.blacklistToken(payload.jti, expiresAt);

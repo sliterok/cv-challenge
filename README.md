@@ -4,8 +4,8 @@ CV Challenge is a lightweight interactive verification flow that feels more like
 
 ## Packages
 
-- `@cv-challenge/server`: server-side renderer, token manager, and Express adapter.
-- `@cv-challenge/react-plugin`: React widget with a minimal overlay UX.
+- [@cv-challenge/server](packages/server/README.md): server-side renderer, token manager, and Express adapter.
+- [@cv-challenge/react-plugin](packages/react-plugin/README.md): React widget with a minimal overlay UX.
 - `apps/demo`: Vite demo app that consumes the React plugin.
 - `apps/server`: Express server example for local development.
 
@@ -22,6 +22,7 @@ CV Challenge is a lightweight interactive verification flow that feels more like
 - Successful verification returns a success token (60s by default).
 - `onVerified` can override success token TTL/payload or return null to skip issuing it.
 - `validateSuccessToken` can tie success tokens to session or user data.
+- Success tokens are invalidated after 3 consecutive failed verifications tied to them.
 - When the success token is sent back to `/challenge`, the server skips the 5s cold-start delay.
 - Without a valid success token, `/challenge` responses are padded to ~5 seconds total.
 - The React plugin handles the success token and shows a countdown during cold start.
