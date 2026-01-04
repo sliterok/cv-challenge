@@ -9,14 +9,23 @@ export type CaptchaTokenPayload = {
   exp: number;
 };
 
+export type SuccessTokenPayload = {
+  jti: string;
+  exp: number;
+  kind: 'success';
+};
+
 export type CaptchaTokenManagerOptions = {
   secret: string;
   tokenTtlSec?: number;
+  successTokenTtlSec?: number;
 };
 
 export type CaptchaTokenManager = {
   issueToken: (hitbox: Hitbox) => Promise<{ token: string; expiresAt: number; expiresInMs: number }>;
   decryptToken: (token: string) => Promise<CaptchaTokenPayload>;
+  issueSuccessToken: () => Promise<{ token: string; expiresAt: number; expiresInMs: number }>;
+  decryptSuccessToken: (token: string) => Promise<SuccessTokenPayload>;
   blacklistToken: (jti: string, expiresAt: number) => void;
   isBlacklisted: (jti: string) => boolean;
   prune: () => void;
@@ -56,7 +65,8 @@ export type CaptchaExpressAdapterOptions = {
 
 export const createCaptchaTokenManager = ({
   secret,
-  tokenTtlSec = 20
+  tokenTtlSec = 20,
+  successTokenTtlSec = 60
 }: CaptchaTokenManagerOptions): CaptchaTokenManager => {
   const jwtKey = createHash('sha256').update(secret).digest();
   const blacklist = new Map<string, number>();
@@ -98,6 +108,34 @@ export const createCaptchaTokenManager = ({
     return { hitbox, jti, exp };
   };
 
+  const issueSuccessToken = async (): Promise<{ token: string; expiresAt: number; expiresInMs: number }> => {
+    const jti = randomUUID();
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const exp = issuedAt + successTokenTtlSec;
+    const expiresAt = exp * 1000;
+    const token = await new EncryptJWT({ jti, exp, kind: 'success' as const })
+      .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
+      .setIssuedAt(issuedAt)
+      .setExpirationTime(exp)
+      .setJti(jti)
+      .encrypt(jwtKey);
+    return { token, expiresAt, expiresInMs: successTokenTtlSec * 1000 };
+  };
+
+  const decryptSuccessToken = async (token: string): Promise<SuccessTokenPayload> => {
+    const { payload } = await jwtDecrypt(token, jwtKey);
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('invalid-success-token');
+    }
+    const kind = payload.kind as string | undefined;
+    const jti = payload.jti as string | undefined;
+    const exp = payload.exp as number | undefined;
+    if (kind !== 'success' || typeof jti !== 'string' || typeof exp !== 'number') {
+      throw new Error('invalid-success-token');
+    }
+    return { jti, exp, kind: 'success' };
+  };
+
   const blacklistToken = (jti: string, expiresAt: number): void => {
     if (jti) {
       blacklist.set(jti, expiresAt);
@@ -107,11 +145,18 @@ export const createCaptchaTokenManager = ({
   return {
     issueToken,
     decryptToken,
+    issueSuccessToken,
+    decryptSuccessToken,
     blacklistToken,
     isBlacklisted: (jti: string) => blacklist.has(jti),
     prune
   };
 };
+
+const wait = (ms: number): Promise<void> =>
+  new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
 
 export const createCaptchaExpressRouter = ({
   captcha,
@@ -119,12 +164,33 @@ export const createCaptchaExpressRouter = ({
   onVerified
 }: CaptchaExpressAdapterOptions): Router => {
   const router = express.Router();
+  const minGenerationMs = 5000;
 
   router.get('/captcha', async (_req, res) => {
     try {
+      const requestStart = Date.now();
       tokenManager.prune();
+      let hasValidSuccessToken = false;
+      const successTokenHeader = _req.header('x-captcha-success-token');
+      if (successTokenHeader) {
+        try {
+          const successPayload = await tokenManager.decryptSuccessToken(successTokenHeader);
+          if (successPayload.exp * 1000 > Date.now()) {
+            hasValidSuccessToken = true;
+          }
+        } catch {
+          hasValidSuccessToken = false;
+        }
+      }
       const { videoBuffer, hitbox, debug } = await captcha.generate();
       const { token, expiresAt, expiresInMs } = await tokenManager.issueToken(hitbox);
+      if (!hasValidSuccessToken) {
+        const elapsed = Date.now() - requestStart;
+        const remaining = Math.max(0, minGenerationMs - elapsed);
+        if (remaining > 0) {
+          await wait(remaining);
+        }
+      }
       res.set('Content-Type', 'video/webm');
       res.set('Cache-Control', 'no-store');
       res.set('X-Captcha-Token', token);
@@ -155,14 +221,22 @@ export const createCaptchaExpressRouter = ({
       }
 
       const success = captcha.validate({ x, y }, payload.hitbox);
+      let successToken: { token: string; expiresAt: number; expiresInMs: number } | null = null;
       if (!success) {
         tokenManager.blacklistToken(payload.jti, expiresAt);
       } else {
+        successToken = await tokenManager.issueSuccessToken();
         onVerified?.({ req, res, token, jti: payload.jti, hitbox: payload.hitbox, x, y });
       }
 
       console.log('[verify]', { x, y, success, token: payload.jti });
-      res.json({ success, reload: !success });
+      res.json({
+        success,
+        reload: !success,
+        successToken: successToken?.token ?? null,
+        successTokenExpiresAt: successToken?.expiresAt ?? null,
+        successTokenExpiresIn: successToken?.expiresInMs ?? null
+      });
     } catch (error) {
       console.error('[verify] token decrypt failed', error);
       res.status(401).json({ error: 'invalid-token', reload: true });

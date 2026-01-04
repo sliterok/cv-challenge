@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 type VerifyResult = {
   success: boolean;
   reload?: boolean;
+  successToken?: string | null;
+  successTokenExpiresAt?: number | null;
+  successTokenExpiresIn?: number | null;
 };
 
 export type AltchaCaptchaProps = {
@@ -36,6 +39,9 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const expiryTimerRef = useRef<number | null>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const successTokenRef = useRef<string | null>(null);
+  const successTokenExpiresAtRef = useRef<number | null>(null);
+  const successTimerRef = useRef<number | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [token, setToken] = useState<string | null>(null);
 
@@ -58,12 +64,51 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     }, delay);
   };
 
+  const clearSuccessTimer = () => {
+    if (successTimerRef.current !== null) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
+  };
+
+  const clearSuccessToken = () => {
+    successTokenRef.current = null;
+    successTokenExpiresAtRef.current = null;
+    clearSuccessTimer();
+  };
+
+  const setSuccessToken = (tokenValue: string, expiresAtMs: number) => {
+    successTokenRef.current = tokenValue;
+    successTokenExpiresAtRef.current = expiresAtMs;
+    clearSuccessTimer();
+    const delay = Math.max(expiresAtMs - Date.now(), 0);
+    successTimerRef.current = window.setTimeout(() => {
+      clearSuccessToken();
+    }, delay);
+  };
+
+  const getSuccessToken = (): string | null => {
+    const tokenValue = successTokenRef.current;
+    const expiresAtMs = successTokenExpiresAtRef.current;
+    if (!tokenValue || !expiresAtMs) return null;
+    if (expiresAtMs <= Date.now()) {
+      clearSuccessToken();
+      return null;
+    }
+    return tokenValue;
+  };
+
   const loadCaptcha = useCallback(async () => {
     setStatus('loading');
     setToken(null);
     clearExpiryTimer();
     try {
-      const response = await fetch(joinUrl(apiBaseUrl, '/captcha'), { cache: 'no-store' });
+      const headers: Record<string, string> = {};
+      const successToken = getSuccessToken();
+      if (successToken) {
+        headers['x-captcha-success-token'] = successToken;
+      }
+      const response = await fetch(joinUrl(apiBaseUrl, '/captcha'), { cache: 'no-store', headers });
       if (!response.ok) {
         setStatus('expired');
         onError?.('captcha-fetch-failed');
@@ -113,6 +158,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     loadCaptcha();
     return () => {
       clearExpiryTimer();
+      clearSuccessTimer();
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
@@ -150,6 +196,13 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
       if (!success || data.reload) {
         await loadCaptcha();
         return;
+      }
+      if (data.successToken) {
+        const expiresAtMs =
+          typeof data.successTokenExpiresAt === 'number'
+            ? data.successTokenExpiresAt
+            : Date.now() + Number(data.successTokenExpiresIn ?? 60000);
+        setSuccessToken(data.successToken, expiresAtMs);
       }
       clearExpiryTimer();
       const video = videoRef.current;

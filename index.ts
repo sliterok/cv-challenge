@@ -516,6 +516,7 @@ export { createCaptchaExpressRouter, createCaptchaTokenManager } from './express
 export type {
   CaptchaTokenManagerOptions,
   CaptchaTokenPayload,
+  SuccessTokenPayload,
   CaptchaExpressAdapterOptions,
   CaptchaVerifyContext,
   CaptchaTokenManager,

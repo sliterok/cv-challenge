@@ -25,6 +25,9 @@ Server-side 3D captcha rendering using OpenCV and FFmpeg. The demo renders 20 de
 - The hitbox is encrypted into a JWT token, so no server-side session storage is required.
 - Tokens expire after ~20 seconds; failed attempts are blacklisted until expiry.
 - Express helpers are available via `createCaptchaExpressRouter` and `createCaptchaTokenManager`.
+- Successful verifications return a short-lived success token (60s) that skips the 5s generation delay when sent back to `/captcha`.
+  - The React plugin manages this automatically via the `X-Captcha-Success-Token` header.
+- Without a valid success token, `/captcha` responses are padded to ~5 seconds total.
 
 ## Running the demo
 
