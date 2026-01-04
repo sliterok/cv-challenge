@@ -4,6 +4,8 @@ const app = express();
 
 const captchaEngine = new Motion3DCaptcha();
 
+const global = { sessions: {}}
+
 app.get('/get-captcha', async (req, res) => {
     const { videoBuffer, solution } = await captchaEngine.generate();
     
@@ -22,3 +24,5 @@ app.post('/verify', express.json(), (req, res) => {
     const isValid = captchaEngine.validate({ x, y, t }, solution);
     res.json({ success: isValid });
 });
+
+app.listen(3000)

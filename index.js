@@ -26,7 +26,6 @@ class Motion3DCaptcha {
             [0, focalLength, height / 2],
             [0, 0, 1]
         ], cv.CV_64F);
-        this.distCoeffs = new cv.Mat([0, 0, 0, 0], cv.CV_64F);
     }
 
     /**
@@ -84,11 +83,11 @@ class Motion3DCaptcha {
                 const vertices = this.cubeVertices.map(v => v.mul(scale));
 
                 // Project 3D to 2D
-                const projected = cv.projectPoints(vertices, rvec, tvec, this.cameraMatrix, this.distCoeffs);
+                const projected = cv.projectPoints(vertices, rvec, tvec, this.cameraMatrix, [0,0,0,0]);
                 
                 // Draw 2D Polygon (simplified face rendering)
                 const color = isTarget ? [200, 100, 255, 255] : [200, 200, 200, 255];
-                const points = projected.map(p => new cv.Point2(p.x, p.y));
+                const points = projected.imagePoints.map(p => new cv.Point2(p.x, p.y));
                 
                 frame.drawFillConvexPoly(points, new cv.Vec4(...color));
 
