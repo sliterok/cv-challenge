@@ -1,3 +1,6 @@
+packages:
+  - "packages/*"
+  - "apps/*"
 onlyBuiltDependencies:
   - opencv-build
   - opencv4nodejs

@@ -176,16 +176,16 @@ class Motion3DCaptcha {
   private camera: { fx: number; fy: number; cx: number; cy: number };
   private keyLight: Vec3;
   private fillLight: Vec3;
-  private ambient = 0.32;
-  private keyStrength = 0.9;
-  private fillStrength = 0.45;
+  private ambient = 0.36;
+  private keyStrength = 0.95;
+  private fillStrength = 0.55;
 
   constructor(width = 432, height = 180, durationSec = 3, objectCount = 20) {
     this.width = width;
     this.height = height;
     this.fps = 30;
     this.totalFrames = Math.max(1, Math.round(durationSec * this.fps));
-    this.objectCount = clamp(Math.round(objectCount), 8, 20);
+    this.objectCount = clamp(Math.round(objectCount), 1, 20);
     this.noise2D = createNoise2D();
     this.noise3D = createNoise3D();
     this.camera = {
@@ -201,10 +201,18 @@ class Motion3DCaptcha {
   async generate(): Promise<{
     videoBuffer: Buffer;
     hitbox: Hitbox;
-    debug: { targetId: number; staticCount: number; movingCount: number; objectCount: number; hitbox: Hitbox };
+    debug: {
+      targetId: number;
+      staticCount: number;
+      movingCount: number;
+      objectCount: number;
+      hitbox: Hitbox;
+      timingMs: { render: number; encode: number; total: number };
+    };
   }> {
     const { objects, targetId, movingCount, staticCount } = this.createScene();
     const hitbox = this.computeTargetHitbox(objects, targetId);
+    const startTime = process.hrtime.bigint();
     const videoStream = new PassThrough();
 
     const ffmpegProcess = ffmpeg(videoStream)
@@ -225,25 +233,39 @@ class Motion3DCaptcha {
 
     const bufferStream = ffmpegProcess.pipe(new PassThrough());
     const mask = new cv.Mat(this.height, this.width, cv.CV_8UC1, 0);
+    const frame = new cv.Mat(this.height, this.width, cv.CV_8UC4, [0, 0, 0, 0]);
+    const clearColor = new cv.Vec4(0, 0, 0, 0);
 
     for (let t = 0; t < this.totalFrames; t += 1) {
       const time = t / this.fps;
-      const frame = new cv.Mat(this.height, this.width, cv.CV_8UC4, [0, 0, 0, 0]);
+      frame.setTo(clearColor);
       this.renderFrame(frame, mask, objects, time);
       videoStream.write(Buffer.from(frame.getData()));
     }
 
     videoStream.end();
+    const renderDone = process.hrtime.bigint();
+    const renderMs = Number(renderDone - startTime) / 1e6;
+
+    const videoBuffer = await this.streamToBuffer(bufferStream);
+    const endTime = process.hrtime.bigint();
+    const totalMs = Number(endTime - startTime) / 1e6;
+    const encodeMs = Math.max(0, totalMs - renderMs);
 
     return {
-      videoBuffer: await this.streamToBuffer(bufferStream),
+      videoBuffer,
       hitbox,
       debug: {
         targetId,
         staticCount,
         movingCount,
         objectCount: objects.length,
-        hitbox
+        hitbox,
+        timingMs: {
+          render: Math.round(renderMs),
+          encode: Math.round(encodeMs),
+          total: Math.round(totalMs)
+        }
       }
     };
   }
@@ -276,16 +298,16 @@ class Motion3DCaptcha {
         isTarget: false,
         basePosition: position,
         moveAmplitude: isMoving
-          ? { x: randRange(1.6, 3.0), y: randRange(1.0, 2.2), z: randRange(0.5, 1.3) }
+          ? { x: randRange(2.0, 3.6), y: randRange(1.2, 2.6), z: randRange(0.6, 1.6) }
           : { x: 0, y: 0, z: 0 },
-        moveSpeed: isMoving ? randRange(0.7, 1.4) : 0,
+        moveSpeed: isMoving ? randRange(0.9, 1.9) : 0,
         rotationAxis: randomUnitVector(),
-        rotationSpeed: isMoving ? randRange(0.7, 1.4) : randRange(0.15, 0.45),
-        scaleBase: randRange(0.75, 1.1),
-        scaleAmp: isMoving ? randRange(0.08, 0.18) : randRange(0.04, 0.1),
-        scaleSpeed: isMoving ? randRange(0.6, 1.2) : randRange(0.25, 0.6),
-        morphAmp: isMoving ? randRange(0.08, 0.2) : randRange(0.03, 0.1),
-        morphSpeed: isMoving ? randRange(0.9, 1.7) : randRange(0.35, 0.8),
+        rotationSpeed: isMoving ? randRange(0.9, 1.8) : randRange(0.08, 0.32),
+        scaleBase: randRange(0.7, 1.05),
+        scaleAmp: isMoving ? randRange(0.1, 0.22) : randRange(0.03, 0.08),
+        scaleSpeed: isMoving ? randRange(0.8, 1.6) : randRange(0.18, 0.45),
+        morphAmp: isMoving ? randRange(0.1, 0.24) : randRange(0.02, 0.06),
+        morphSpeed: isMoving ? randRange(1.1, 2.1) : randRange(0.2, 0.55),
         color: randomColor(),
         seed
       };
@@ -295,12 +317,12 @@ class Motion3DCaptcha {
     const targetId = staticIndices[Math.floor(Math.random() * staticIndices.length)];
     const target = objects[targetId];
     target.isTarget = true;
-    target.rotationSpeed *= 2.6;
-    target.scaleBase *= 1.05;
-    target.scaleAmp *= 2.2;
-    target.scaleSpeed *= 1.8;
-    target.morphAmp *= 1.9;
-    target.morphSpeed *= 2.2;
+    target.rotationSpeed *= 3.2;
+    target.scaleBase *= 1.08;
+    target.scaleAmp *= 2.6;
+    target.scaleSpeed *= 2.4;
+    target.morphAmp *= 2.4;
+    target.morphSpeed *= 2.8;
 
     return { objects, targetId, movingCount, staticCount };
   }
@@ -376,7 +398,7 @@ class Motion3DCaptcha {
 
   private buildObjectVertices(obj: SceneObject, time: number): Vec3[] {
     const baseScale = obj.scaleBase + this.noise2D(obj.seed, time * obj.scaleSpeed) * obj.scaleAmp;
-    const pulse = obj.isTarget ? 1 + Math.sin(time * 6) * 0.12 : 1;
+    const pulse = obj.isTarget ? 1 + Math.sin(time * 8) * 0.24 : 1;
     const scale = baseScale * pulse;
     const angle = obj.rotationSpeed * time + this.noise2D(obj.seed + 11, time * 0.5) * 0.6;
     const rotation = rotationMatrixFromAxisAngle(obj.rotationAxis, angle);
@@ -390,15 +412,24 @@ class Motion3DCaptcha {
       : { x: 0, y: 0, z: 0 };
     const position = add(obj.basePosition, moveOffset);
 
+    const morphTime = time * obj.morphSpeed;
+    const offsets = CUBE_VERTICES.map((_, idx) => ({
+      x: this.noise3D(obj.seed + idx * 3, morphTime, obj.id) * obj.morphAmp,
+      y: this.noise3D(obj.seed + idx * 3 + 1, morphTime, obj.id) * obj.morphAmp,
+      z: this.noise3D(obj.seed + idx * 3 + 2, morphTime, obj.id) * obj.morphAmp
+    }));
+    const offsetSum = offsets.reduce(
+      (acc, curr) => ({ x: acc.x + curr.x, y: acc.y + curr.y, z: acc.z + curr.z }),
+      { x: 0, y: 0, z: 0 }
+    );
+    const offsetAvg = scaleVec(offsetSum, 1 / offsets.length);
+
     return CUBE_VERTICES.map((v, idx) => {
-      const morphTime = time * obj.morphSpeed;
-      const offsetX = this.noise3D(obj.seed + idx * 3, morphTime, obj.id) * obj.morphAmp;
-      const offsetY = this.noise3D(obj.seed + idx * 3 + 1, morphTime, obj.id) * obj.morphAmp;
-      const offsetZ = this.noise3D(obj.seed + idx * 3 + 2, morphTime, obj.id) * obj.morphAmp;
+      const offset = offsets[idx];
       const local = {
-        x: (v.x + offsetX) * scale,
-        y: (v.y + offsetY) * scale,
-        z: (v.z + offsetZ) * scale
+        x: (v.x + offset.x - offsetAvg.x) * scale,
+        y: (v.y + offset.y - offsetAvg.y) * scale,
+        z: (v.z + offset.z - offsetAvg.z) * scale
       };
       return add(applyMatrix(rotation, local), position);
     });
@@ -432,7 +463,8 @@ class Motion3DCaptcha {
 
         const key = Math.max(0, dot(normal, this.keyLight));
         const fill = Math.max(0, dot(normal, this.fillLight));
-        const intensity = clamp(this.ambient + this.keyStrength * key + this.fillStrength * fill, 0.1, 1.35);
+        const boost = obj.isTarget ? 0.22 : 0;
+        const intensity = clamp(this.ambient + this.keyStrength * key + this.fillStrength * fill + boost, 0.15, 1.45);
         const color = shadeColor(obj.color, intensity);
 
         const projected = face.map(idx => this.projectPoint(worldVertices[idx]));

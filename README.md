@@ -5,7 +5,9 @@ Server-side 3D captcha rendering using OpenCV and FFmpeg. The demo renders 20 de
 ## What this POC includes
 
 - TypeScript + ESM implementation (`index.ts`).
-- Express demo with a clickable HTML test page (`demo.ts`).
+- Express captcha API server (`server.ts`).
+- React plugin (Vite library) in `packages/react-plugin`.
+- Vite demo app in `apps/demo`.
 - Encrypted JWT (JWE) token containing the target hitbox.
 - Static and moving object populations in roughly equal proportions.
 
@@ -21,6 +23,7 @@ Server-side 3D captcha rendering using OpenCV and FFmpeg. The demo renders 20 de
 - The target object is always **static in position** (it still rotates/scales).
 - A single screen-space hitbox is computed by sampling the target across the clip.
 - The hitbox is encrypted into a JWT token, so no server-side session storage is required.
+- Tokens expire after ~20 seconds; failed attempts are blacklisted until expiry.
 
 ## Running the demo
 
@@ -29,7 +32,12 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:3000` and click the static object that pulses faster.
+This starts the captcha server on `http://localhost:3000` and the Vite demo on `http://localhost:5173`.
+Use `pnpm dev:server` or `pnpm dev:demo` if you want to run them separately.
+
+## React plugin
+
+The React component lives in `packages/react-plugin` and expects `/captcha` + `/verify` endpoints. It renders a 2.4:1 video with a minimal overlay (loading and expired states only).
 
 ### Environment variables
 
@@ -39,4 +47,4 @@ Open `http://localhost:3000` and click the static object that pulses faster.
 ## Notes
 
 - WebM alpha support depends on the browser and player. Chrome and Chromium-based browsers work well.
-- The demo returns debug details in the response; remove these for production.
+- The demo logs verification responses in the console; remove these for production.
