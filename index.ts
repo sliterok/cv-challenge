@@ -154,8 +154,8 @@ const hslToRgb = (h: number, s: number, l: number): Rgb => {
 
 const randomColor = (): Rgb => {
   const h = Math.random();
-  const s = randRange(0.55, 0.85);
-  const l = randRange(0.45, 0.62);
+  const s = randRange(0.6, 0.92);
+  const l = randRange(0.52, 0.7);
   return hslToRgb(h, s, l);
 };
 
@@ -174,16 +174,18 @@ class Motion3DCaptcha {
   private noise2D: ReturnType<typeof createNoise2D>;
   private noise3D: ReturnType<typeof createNoise3D>;
   private camera: { fx: number; fy: number; cx: number; cy: number };
-  private lightDir: Vec3;
-  private ambient = 0.25;
-  private diffuse = 0.75;
+  private keyLight: Vec3;
+  private fillLight: Vec3;
+  private ambient = 0.32;
+  private keyStrength = 0.9;
+  private fillStrength = 0.45;
 
-  constructor(width = 640, height = 480, durationSec = 3, objectCount = 30) {
+  constructor(width = 432, height = 180, durationSec = 3, objectCount = 20) {
     this.width = width;
     this.height = height;
     this.fps = 30;
     this.totalFrames = Math.max(1, Math.round(durationSec * this.fps));
-    this.objectCount = clamp(Math.round(objectCount), 20, 50);
+    this.objectCount = clamp(Math.round(objectCount), 8, 20);
     this.noise2D = createNoise2D();
     this.noise3D = createNoise3D();
     this.camera = {
@@ -192,7 +194,8 @@ class Motion3DCaptcha {
       cx: width / 2,
       cy: height / 2
     };
-    this.lightDir = normalize({ x: -0.4, y: 0.2, z: 1 });
+    this.keyLight = normalize({ x: -0.25, y: 0.35, z: 1 });
+    this.fillLight = normalize({ x: 0.6, y: -0.15, z: 0.7 });
   }
 
   async generate(): Promise<{
@@ -273,16 +276,16 @@ class Motion3DCaptcha {
         isTarget: false,
         basePosition: position,
         moveAmplitude: isMoving
-          ? { x: randRange(1.0, 2.6), y: randRange(0.8, 2.0), z: randRange(0.4, 1.4) }
+          ? { x: randRange(1.6, 3.0), y: randRange(1.0, 2.2), z: randRange(0.5, 1.3) }
           : { x: 0, y: 0, z: 0 },
-        moveSpeed: isMoving ? randRange(0.3, 0.8) : 0,
+        moveSpeed: isMoving ? randRange(0.7, 1.4) : 0,
         rotationAxis: randomUnitVector(),
-        rotationSpeed: randRange(0.4, 1.2),
-        scaleBase: randRange(0.85, 1.45),
-        scaleAmp: randRange(0.1, 0.25),
-        scaleSpeed: randRange(0.4, 1.1),
-        morphAmp: randRange(0.05, 0.25),
-        morphSpeed: randRange(0.6, 1.4),
+        rotationSpeed: isMoving ? randRange(0.7, 1.4) : randRange(0.15, 0.45),
+        scaleBase: randRange(0.75, 1.1),
+        scaleAmp: isMoving ? randRange(0.08, 0.18) : randRange(0.04, 0.1),
+        scaleSpeed: isMoving ? randRange(0.6, 1.2) : randRange(0.25, 0.6),
+        morphAmp: isMoving ? randRange(0.08, 0.2) : randRange(0.03, 0.1),
+        morphSpeed: isMoving ? randRange(0.9, 1.7) : randRange(0.35, 0.8),
         color: randomColor(),
         seed
       };
@@ -292,9 +295,12 @@ class Motion3DCaptcha {
     const targetId = staticIndices[Math.floor(Math.random() * staticIndices.length)];
     const target = objects[targetId];
     target.isTarget = true;
-    target.rotationSpeed *= 1.8;
-    target.scaleAmp *= 1.4;
-    target.morphSpeed *= 2.0;
+    target.rotationSpeed *= 2.6;
+    target.scaleBase *= 1.05;
+    target.scaleAmp *= 2.2;
+    target.scaleSpeed *= 1.8;
+    target.morphAmp *= 1.9;
+    target.morphSpeed *= 2.2;
 
     return { objects, targetId, movingCount, staticCount };
   }
@@ -302,20 +308,25 @@ class Motion3DCaptcha {
   private createGridPositions(count: number): Vec3[] {
     const cols = Math.ceil(Math.sqrt(count));
     const rows = Math.ceil(count / cols);
-    const baseZ = 26;
-    const maxX = baseZ * 0.45;
-    const maxY = baseZ * 0.35;
+    const baseZ = 16;
+    const margin = 6;
+    const packX = 0.78;
+    const packY = 0.82;
+    const maxX = ((this.width / 2) - margin) * (baseZ / this.camera.fx) * packX;
+    const maxY = ((this.height / 2) - margin) * (baseZ / this.camera.fy) * packY;
     const spacingX = cols > 1 ? (maxX * 2) / (cols - 1) : 0;
     const spacingY = rows > 1 ? (maxY * 2) / (rows - 1) : 0;
+    const jitterX = spacingX * 0.12;
+    const jitterY = spacingY * 0.12;
     const positions: Vec3[] = [];
 
     for (let i = 0; i < count; i += 1) {
       const col = i % cols;
       const row = Math.floor(i / cols);
       positions.push({
-        x: -maxX + col * spacingX + randRange(-0.6, 0.6),
-        y: -maxY + row * spacingY + randRange(-0.5, 0.5),
-        z: baseZ + randRange(-2.5, 2.5)
+        x: -maxX + col * spacingX + randRange(-jitterX, jitterX),
+        y: -maxY + row * spacingY + randRange(-jitterY, jitterY),
+        z: baseZ + randRange(-0.8, 0.8)
       });
     }
 
@@ -323,12 +334,12 @@ class Motion3DCaptcha {
   }
 
   private computeTargetHitbox(objects: SceneObject[], targetId: number): Hitbox {
-    const samples = Math.min(10, this.totalFrames);
+    const samples = Math.min(12, this.totalFrames);
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
-    const padding = 14;
+    const padding = 10;
 
     for (let i = 0; i < samples; i += 1) {
       const time = (i / Math.max(samples - 1, 1)) * (this.totalFrames / this.fps);
@@ -364,7 +375,9 @@ class Motion3DCaptcha {
   }
 
   private buildObjectVertices(obj: SceneObject, time: number): Vec3[] {
-    const scale = obj.scaleBase + this.noise2D(obj.seed, time * obj.scaleSpeed) * obj.scaleAmp;
+    const baseScale = obj.scaleBase + this.noise2D(obj.seed, time * obj.scaleSpeed) * obj.scaleAmp;
+    const pulse = obj.isTarget ? 1 + Math.sin(time * 6) * 0.12 : 1;
+    const scale = baseScale * pulse;
     const angle = obj.rotationSpeed * time + this.noise2D(obj.seed + 11, time * 0.5) * 0.6;
     const rotation = rotationMatrixFromAxisAngle(obj.rotationAxis, angle);
     const movePhase = time * obj.moveSpeed;
@@ -417,7 +430,9 @@ class Motion3DCaptcha {
         const viewDir = normalize(scaleVec(center, -1));
         if (dot(normal, viewDir) <= 0) continue;
 
-        const intensity = this.ambient + this.diffuse * Math.max(0, dot(normal, this.lightDir));
+        const key = Math.max(0, dot(normal, this.keyLight));
+        const fill = Math.max(0, dot(normal, this.fillLight));
+        const intensity = clamp(this.ambient + this.keyStrength * key + this.fillStrength * fill, 0.1, 1.35);
         const color = shadeColor(obj.color, intensity);
 
         const projected = face.map(idx => this.projectPoint(worldVertices[idx]));

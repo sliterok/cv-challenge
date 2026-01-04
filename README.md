@@ -1,6 +1,6 @@
 # Motion3DCaptcha POC
 
-Server-side 3D captcha rendering using OpenCV and FFmpeg. The demo renders 20-50 cubes with noise-driven transforms, Lambertian shading, randomized colors, and WebM alpha output. Verification is simplified by keeping the target object static in screen space and storing a single hitbox in an encrypted JWT.
+Server-side 3D captcha rendering using OpenCV and FFmpeg. The demo renders 20 densely packed cubes in a 2.4:1, 180px-tall clip with noise-driven transforms, Lambertian shading, randomized colors, and WebM alpha output. Verification is simplified by keeping the target object static in screen space and storing a single hitbox in an encrypted JWT.
 
 ## What this POC includes
 
@@ -12,7 +12,7 @@ Server-side 3D captcha rendering using OpenCV and FFmpeg. The demo renders 20-50
 ## Rendering pipeline
 
 1. **Transform**: Each cube is scaled, rotated, and optionally morphed using simplex noise.
-2. **Shading**: Lambertian reflectance is computed per face from a fixed light direction.
+2. **Shading**: Lambertian reflectance is computed per face from a key and fill light.
 3. **Projection**: Manual pinhole projection converts 3D vertices to screen space.
 4. **Encoding**: BGRA frames are streamed into FFmpeg (`libvpx-vp9`) with alpha.
 
