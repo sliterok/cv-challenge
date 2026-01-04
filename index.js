@@ -1,26 +1,29 @@
 const cv = require('opencv4nodejs');
 const ffmpeg = require('fluent-ffmpeg');
 const { PassThrough } = require('stream');
-const { createNoise2D } = require('simplex-noise');
+const SimplexNoise = require('simplex-noise');
 
 class Motion3DCaptcha {
-    constructor(width = 400, height = 300, durationSec = 3) {
+    constructor(width = 640, height = 480, durationSec = 3) {
         this.width = width;
         this.height = height;
         this.fps = 30;
         this.totalFrames = durationSec * this.fps;
-        this.noise2D = createNoise2D();
+        this.noise = new SimplexNoise();
         
-        // Define 3D Geometry (Cubes)
-        this.cubeVertices = [
-            new cv.Point3(-1, -1,  1), new cv.Point3(1, -1,  1),
-            new cv.Point3(1,  1,  1), new cv.Point3(-1,  1,  1),
-            new cv.Point3(-1, -1, -1), new cv.Point3(1, -1, -1),
-            new cv.Point3(1,  1, -1), new cv.Point3(-1,  1, -1)
-        ];
+        // Define 3D Mesh: A more complex sphere-like blob for better "shape shifting"
+        this.baseVertices = [];
+        for (let i = 0; i < 8; i++) {
+            // A simple cube-based structure that we will morph
+            this.baseVertices.push(new cv.Point3(
+                (i & 1 ? 1 : -1),
+                (i & 2 ? 1 : -1),
+                (i & 4 ? 1 : -1)
+            ));
+        }
         
-        // Camera setup
-        const focalLength = width;
+        // Sane Camera Matrix: Focal length should be roughly equal to width for standard FOV
+        const focalLength = width * 0.8; 
         this.cameraMatrix = new cv.Mat([
             [focalLength, 0, width / 2],
             [0, focalLength, height / 2],
@@ -28,70 +31,73 @@ class Motion3DCaptcha {
         ], cv.CV_64F);
     }
 
-    /**
-     * Generates the captcha video and the validation data
-     */
     async generate() {
-        const targetIndex = Math.floor(Math.random() * 4); // 4 objects total
+        const targetIndex = Math.floor(Math.random() * 3); // 3 objects
         const solutionLog = [];
         const videoStream = new PassThrough();
         
-        // Initialize FFmpeg Command
         const ffmpegProcess = ffmpeg(videoStream)
             .inputFormat('rawvideo')
             .inputOptions([
-                '-pix_fmt bgra',
+                '-pix_fmt bgra', // OpenCV CV_8UC4 layout
                 `-s ${this.width}x${this.height}`,
                 `-r ${this.fps}`
             ])
             .videoCodec('libvpx-vp9')
             .outputOptions([
-                '-pix_fmt yuva420p',    // Enables transparency
-                '-auto-alt-ref 0',      // Required for alpha in some players
+                '-pix_fmt yuva420p',    // YUV + Alpha channel
+                '-auto-alt-ref 0',      // Required for alpha transparency in WebM
+                '-metadata:s:v:0 alpha_mode=1',
                 '-lossless 1'
             ])
             .toFormat('webm');
 
-        // Start the render loop
-        const bufferStream = ffmpegProcess.pipe();
+        const bufferStream = ffmpegProcess.pipe(new PassThrough());
 
         for (let t = 0; t < this.totalFrames; t++) {
+            // Initializing with a slightly visible alpha (e.g., 1) can help debug
+            // but [0,0,0,0] is true transparency.
             const frame = new cv.Mat(this.height, this.width, cv.CV_8UC4, [0, 0, 0, 0]);
             const time = t / this.fps;
 
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 3; i++) {
                 const isTarget = (i === targetIndex);
+                const seed = i * 50;
                 
-                // Use noise for smooth transformations
-                // Target has higher frequency noise (jittery/different)
-                const freq = isTarget ? 3.0 : 0.5;
-                const seed = i * 100;
-
-                const rvec = new cv.Vec3(
-                    this.noise2D(seed, time * freq),
-                    this.noise2D(seed + 1, time * freq),
-                    this.noise2D(seed + 2, time * freq)
-                );
-
+                // Movement Logic
+                const freqMove = 0.5;
                 const tvec = new cv.Vec3(
-                    (i - 1.5) * 4 + this.noise2D(seed + 3, time), 
-                    this.noise2D(seed + 4, time), 
-                    15 // Depth
+                    (i - 1) * 8 + (this.noise.noise2D(seed, time * freqMove) * 2), // Spread out X
+                    this.noise.noise2D(seed + 1, time * freqMove) * 2,            // Y movement
+                    25 // Z Depth (Make sure this is deep enough to be in FOV)
                 );
 
-                const scale = 1.0 + this.noise2D(seed + 5, time * freq) * 0.5;
-                const vertices = this.cubeVertices.map(v => v.mul(scale));
+                const rvec = new cv.Vec3(time, time * 0.5, time * 0.3);
 
-                // Project 3D to 2D
-                const projected = cv.projectPoints(vertices, rvec, tvec, this.cameraMatrix, [0,0,0,0]);
-                
-                // Draw 2D Polygon (simplified face rendering)
-                const color = isTarget ? [200, 100, 255, 255] : [200, 200, 200, 255];
+                // SHAPE SHIFTING: Apply noise to each vertex individually
+                const morphFreq = isTarget ? 4.0 : 1.0; // Target shifts shape faster/differently
+                const morphedVertices = this.baseVertices.map((v, idx) => {
+                    const offset = this.noise.noise3D(seed + idx, time * morphFreq, i) * 1.5;
+                    return new cv.Point3(v.x + offset, v.y + offset, v.z + offset);
+                });
+
+                // Project points using corrected API
+                const projected = cv.projectPoints(
+                    morphedVertices, 
+                    rvec, 
+                    tvec, 
+                    this.cameraMatrix, 
+                    [0, 0, 0, 0, 0] // distCoeffs as array
+                );
+
+                // DRAWING
+                // Use bright colors to ensure they aren't "lost" in black
+                const color = isTarget ? [255, 100, 100, 255] : [180, 180, 180, 255];
                 const points = projected.imagePoints.map(p => new cv.Point2(p.x, p.y));
                 
-                frame.drawFillConvexPoly(points, new cv.Vec4(...color));
+                // Draw as convex hull to create a solid "blob"
+                frame.drawFillConvexPoly(points, new cv.Vec4(color[0], color[1], color[2], color[3]));
 
-                // Store center point for validation
                 if (isTarget) {
                     const center = points.reduce((a, b) => ({ x: a.x + b.x, y: a.y + b.y }));
                     solutionLog.push({
@@ -122,20 +128,14 @@ class Motion3DCaptcha {
         });
     }
 
-    /**
-     * Efficiency Check: Validates a click coordinate at a specific timestamp
-     */
     validate(userClick, solutionLog) {
         const { x, y, t } = userClick;
-        const tolerancePx = 30; // Radius of correctness
-        
-        // Find the frame closest to the user's click timestamp
+        // Find nearest recorded frame
         const frameData = solutionLog.reduce((prev, curr) => 
             Math.abs(curr.t - t) < Math.abs(prev.t - t) ? curr : prev
         );
-
         const dist = Math.sqrt(Math.pow(frameData.x - x, 2) + Math.pow(frameData.y - y, 2));
-        return dist <= tolerancePx;
+        return dist <= 40; // 40px radius tolerance
     }
 }
 
