@@ -7,6 +7,7 @@ CV Challenge is a lightweight interactive verification flow that feels more like
 - `@cv-challenge/server`: server-side renderer, token manager, and Express adapter.
 - `@cv-challenge/react-plugin`: React widget with a minimal overlay UX.
 - `apps/demo`: Vite demo app that consumes the React plugin.
+- `apps/server`: Express server example for local development.
 
 ## How it works
 
@@ -18,13 +19,14 @@ CV Challenge is a lightweight interactive verification flow that feels more like
 
 - Challenge tokens expire after ~20 seconds; failed attempts are blacklisted until expiry.
 - Successful verification returns a **success token** (60s).
-- When the success token is sent back to `/captcha`, the server skips the 5s cold-start delay.
-- Without a valid success token, `/captcha` responses are padded to ~5 seconds total.
+- `onVerified` can override success token TTL/payload, and `validateSuccessToken` lets you validate payloads per request.
+- When the success token is sent back to `/challenge`, the server skips the 5s cold-start delay.
+- Without a valid success token, `/challenge` responses are padded to ~5 seconds total.
 - The React plugin handles the success token and shows a countdown during cold start.
 
 ## Defaults
 
-- Default video size: **180×60**.
+- Default video size: **180x60**.
 - The React widget and server defaults are aligned; override both if you customize size.
 
 ## Running the demo
@@ -38,7 +40,7 @@ This starts the server on `http://localhost:3000` and the Vite demo on `http://l
 
 ## Environment variables
 
-- `CAPTCHA_JWT_SECRET`: encryption key for challenge tokens (required for production).
+- `CHALLENGE_JWT_SECRET`: encryption key for challenge tokens (required for production).
 - `PORT`: overrides the server port (default: `3000`).
 
 ## Notes

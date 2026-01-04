@@ -170,7 +170,7 @@ const shadeColor = (color: Rgb, intensity: number): Rgb => ({
   b: clamp(Math.round(color.b * intensity), 0, 255)
 });
 
-class Motion3DCaptcha {
+class Motion3DChallenge {
   private width: number;
   private height: number;
   private fps: number;
@@ -511,15 +511,18 @@ class Motion3DCaptcha {
   }
 }
 
-export default Motion3DCaptcha;
+export default Motion3DChallenge;
 export type { Hitbox } from './types.js';
-export { createCaptchaExpressRouter, createCaptchaTokenManager } from './express-adapter.js';
+export { createChallengeExpressRouter, createChallengeTokenManager } from './express-adapter.js';
 export type {
-  CaptchaTokenManagerOptions,
-  CaptchaTokenPayload,
+  ChallengeTokenManagerOptions,
+  ChallengeTokenPayload,
   SuccessTokenPayload,
-  CaptchaExpressAdapterOptions,
-  CaptchaVerifyContext,
-  CaptchaTokenManager,
-  CaptchaEngine
+  SuccessTokenIssueOptions,
+  ChallengeExpressAdapterOptions,
+  ChallengeVerifyContext,
+  ChallengeTokenManager,
+  ChallengeEngine,
+  ChallengeDebugLevel,
+  SuccessTokenValidationContext
 } from './express-adapter.js';

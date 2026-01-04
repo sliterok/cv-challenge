@@ -4,7 +4,6 @@
   "private": true,
   "description": "Vite demo for the CV Challenge React plugin.",
   "keywords": [
-    "captcha",
     "verification",
     "react",
     "vite"

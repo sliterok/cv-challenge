@@ -1,9 +1,9 @@
 import express, { type Request, type Response, type Router } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
-import { EncryptJWT, jwtDecrypt } from 'jose';
+import { EncryptJWT, UnsecuredJWT, jwtDecrypt } from 'jose';
 import type { Hitbox } from './types.js';
 
-export type CaptchaTokenPayload = {
+export type ChallengeTokenPayload = {
   hitbox: Hitbox;
   jti: string;
   exp: number;
@@ -13,25 +13,35 @@ export type SuccessTokenPayload = {
   jti: string;
   exp: number;
   kind: 'success';
+  payload?: Record<string, unknown>;
 };
 
-export type CaptchaTokenManagerOptions = {
+export type SuccessTokenIssueOptions = {
+  expiresInSec?: number;
+  payload?: Record<string, unknown>;
+};
+
+export type ChallengeTokenManagerOptions = {
   secret: string;
   tokenTtlSec?: number;
   successTokenTtlSec?: number;
 };
 
-export type CaptchaTokenManager = {
+export type ChallengeTokenManager = {
   issueToken: (hitbox: Hitbox) => Promise<{ token: string; expiresAt: number; expiresInMs: number }>;
-  decryptToken: (token: string) => Promise<CaptchaTokenPayload>;
-  issueSuccessToken: () => Promise<{ token: string; expiresAt: number; expiresInMs: number }>;
-  decryptSuccessToken: (token: string) => Promise<SuccessTokenPayload>;
+  decryptToken: (token: string) => Promise<ChallengeTokenPayload>;
+  issueSuccessToken: (options?: SuccessTokenIssueOptions) => Promise<{
+    token: string;
+    expiresAt: number;
+    expiresInMs: number;
+  }>;
+  decodeSuccessToken: (token: string) => SuccessTokenPayload;
   blacklistToken: (jti: string, expiresAt: number) => void;
   isBlacklisted: (jti: string) => boolean;
   prune: () => void;
 };
 
-export type CaptchaVerifyContext = {
+export type ChallengeVerifyContext = {
   req: Request;
   res: Response;
   token: string;
@@ -41,7 +51,7 @@ export type CaptchaVerifyContext = {
   y: number;
 };
 
-export type CaptchaEngine = {
+export type ChallengeEngine = {
   generate: () => Promise<{
     videoBuffer: Buffer;
     hitbox: Hitbox;
@@ -57,17 +67,31 @@ export type CaptchaEngine = {
   validate: (userClick: { x: number; y: number }, hitbox: Hitbox) => boolean;
 };
 
-export type CaptchaExpressAdapterOptions = {
-  captcha: CaptchaEngine;
-  tokenManager: CaptchaTokenManager;
-  onVerified?: (context: CaptchaVerifyContext) => void;
+export type ChallengeDebugLevel = 'none' | 'error' | 'info';
+
+export type SuccessTokenValidationContext = {
+  req: Request;
+  res: Response;
 };
 
-export const createCaptchaTokenManager = ({
+export type ChallengeExpressAdapterOptions = {
+  challenge: ChallengeEngine;
+  tokenManager: ChallengeTokenManager;
+  onVerified?: (
+    context: ChallengeVerifyContext
+  ) => Promise<SuccessTokenIssueOptions | null | undefined> | SuccessTokenIssueOptions | null | undefined;
+  validateSuccessToken?: (
+    payload: SuccessTokenPayload,
+    context: SuccessTokenValidationContext
+  ) => Promise<boolean> | boolean;
+  debug?: ChallengeDebugLevel;
+};
+
+export const createChallengeTokenManager = ({
   secret,
   tokenTtlSec = 20,
   successTokenTtlSec = 60
-}: CaptchaTokenManagerOptions): CaptchaTokenManager => {
+}: ChallengeTokenManagerOptions): ChallengeTokenManager => {
   const jwtKey = createHash('sha256').update(secret).digest();
   const blacklist = new Map<string, number>();
 
@@ -94,7 +118,7 @@ export const createCaptchaTokenManager = ({
     return { token, expiresAt, expiresInMs: tokenTtlSec * 1000 };
   };
 
-  const decryptToken = async (token: string): Promise<CaptchaTokenPayload> => {
+  const decryptToken = async (token: string): Promise<ChallengeTokenPayload> => {
     const { payload } = await jwtDecrypt(token, jwtKey);
     if (!payload || typeof payload !== 'object') {
       throw new Error('invalid-token');
@@ -108,32 +132,50 @@ export const createCaptchaTokenManager = ({
     return { hitbox, jti, exp };
   };
 
-  const issueSuccessToken = async (): Promise<{ token: string; expiresAt: number; expiresInMs: number }> => {
+  const issueSuccessToken = async (
+    options: SuccessTokenIssueOptions = {}
+  ): Promise<{ token: string; expiresAt: number; expiresInMs: number }> => {
     const jti = randomUUID();
     const issuedAt = Math.floor(Date.now() / 1000);
-    const exp = issuedAt + successTokenTtlSec;
+    const expiresInSec =
+      typeof options.expiresInSec === 'number' && Number.isFinite(options.expiresInSec)
+        ? Math.max(1, Math.floor(options.expiresInSec))
+        : successTokenTtlSec;
+    const exp = issuedAt + expiresInSec;
     const expiresAt = exp * 1000;
-    const token = await new EncryptJWT({ jti, exp, kind: 'success' as const })
-      .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
+    const payload: SuccessTokenPayload = {
+      jti,
+      exp,
+      kind: 'success',
+      ...(options.payload ? { payload: options.payload } : {})
+    };
+    const token = new UnsecuredJWT(payload)
       .setIssuedAt(issuedAt)
       .setExpirationTime(exp)
       .setJti(jti)
-      .encrypt(jwtKey);
-    return { token, expiresAt, expiresInMs: successTokenTtlSec * 1000 };
+      .encode();
+    return { token, expiresAt, expiresInMs: expiresInSec * 1000 };
   };
 
-  const decryptSuccessToken = async (token: string): Promise<SuccessTokenPayload> => {
-    const { payload } = await jwtDecrypt(token, jwtKey);
+  const decodeSuccessToken = (token: string): SuccessTokenPayload => {
+    const { payload } = UnsecuredJWT.decode<SuccessTokenPayload>(token);
     if (!payload || typeof payload !== 'object') {
       throw new Error('invalid-success-token');
     }
     const kind = payload.kind as string | undefined;
     const jti = payload.jti as string | undefined;
     const exp = payload.exp as number | undefined;
+    const payloadData =
+      payload.payload && typeof payload.payload === 'object' ? (payload.payload as Record<string, unknown>) : undefined;
     if (kind !== 'success' || typeof jti !== 'string' || typeof exp !== 'number') {
       throw new Error('invalid-success-token');
     }
-    return { jti, exp, kind: 'success' };
+    return {
+      jti,
+      exp,
+      kind: 'success',
+      ...(payloadData ? { payload: payloadData } : {})
+    };
   };
 
   const blacklistToken = (jti: string, expiresAt: number): void => {
@@ -146,7 +188,7 @@ export const createCaptchaTokenManager = ({
     issueToken,
     decryptToken,
     issueSuccessToken,
-    decryptSuccessToken,
+    decodeSuccessToken,
     blacklistToken,
     isBlacklisted: (jti: string) => blacklist.has(jti),
     prune
@@ -158,31 +200,48 @@ const wait = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
-export const createCaptchaExpressRouter = ({
-  captcha,
+export const createChallengeExpressRouter = ({
+  challenge,
   tokenManager,
-  onVerified
-}: CaptchaExpressAdapterOptions): Router => {
+  onVerified,
+  validateSuccessToken,
+  debug = 'none'
+}: ChallengeExpressAdapterOptions): Router => {
   const router = express.Router();
   const minGenerationMs = 5000;
 
-  router.get('/captcha', async (_req, res) => {
+  const logInfo = (...args: unknown[]) => {
+    if (debug === 'info') {
+      console.log(...args);
+    }
+  };
+
+  const logError = (...args: unknown[]) => {
+    if (debug !== 'none') {
+      console.error(...args);
+    }
+  };
+
+  router.get('/challenge', async (req, res) => {
     try {
       const requestStart = Date.now();
       tokenManager.prune();
       let hasValidSuccessToken = false;
-      const successTokenHeader = _req.header('x-captcha-success-token');
+      const successTokenHeader = req.header('x-challenge-success-token');
       if (successTokenHeader) {
         try {
-          const successPayload = await tokenManager.decryptSuccessToken(successTokenHeader);
+          const successPayload = tokenManager.decodeSuccessToken(successTokenHeader);
           if (successPayload.exp * 1000 > Date.now()) {
-            hasValidSuccessToken = true;
+            const validation = validateSuccessToken
+              ? await validateSuccessToken(successPayload, { req, res })
+              : true;
+            hasValidSuccessToken = validation;
           }
         } catch {
           hasValidSuccessToken = false;
         }
       }
-      const { videoBuffer, hitbox, debug } = await captcha.generate();
+      const { videoBuffer, hitbox, debug: renderDebug } = await challenge.generate();
       const { token, expiresAt, expiresInMs } = await tokenManager.issueToken(hitbox);
       if (!hasValidSuccessToken) {
         const elapsed = Date.now() - requestStart;
@@ -193,18 +252,18 @@ export const createCaptchaExpressRouter = ({
       }
       res.set('Content-Type', 'video/webm');
       res.set('Cache-Control', 'no-store');
-      res.set('X-Captcha-Token', token);
-      res.set('X-Captcha-Expires-At', String(expiresAt));
-      res.set('X-Captcha-Expires-In', String(expiresInMs));
+      res.set('X-Challenge-Token', token);
+      res.set('X-Challenge-Expires-At', String(expiresAt));
+      res.set('X-Challenge-Expires-In', String(expiresInMs));
       res.send(videoBuffer);
-      console.log('[captcha] generated', { token: token.slice(0, 12), ...debug });
+      logInfo('[challenge] generated', { token: token.slice(0, 12), ...renderDebug });
     } catch (error) {
-      console.error('[captcha] generation failed', error);
-      res.status(500).json({ error: 'captcha-generation-failed' });
+      logError('[challenge] generation failed', error);
+      res.status(500).json({ error: 'challenge-generation-failed' });
     }
   });
 
-  router.post('/verify', async (req, res) => {
+  router.post('/challenge/verify', async (req, res) => {
     const { token, x, y } = req.body ?? {};
     if (typeof token !== 'string' || typeof x !== 'number' || typeof y !== 'number') {
       res.status(400).json({ error: 'invalid-request' });
@@ -220,16 +279,20 @@ export const createCaptchaExpressRouter = ({
         return;
       }
 
-      const success = captcha.validate({ x, y }, payload.hitbox);
+      const success = challenge.validate({ x, y }, payload.hitbox);
       let successToken: { token: string; expiresAt: number; expiresInMs: number } | null = null;
       if (!success) {
         tokenManager.blacklistToken(payload.jti, expiresAt);
       } else {
-        successToken = await tokenManager.issueSuccessToken();
-        onVerified?.({ req, res, token, jti: payload.jti, hitbox: payload.hitbox, x, y });
+        const override = onVerified
+          ? await onVerified({ req, res, token, jti: payload.jti, hitbox: payload.hitbox, x, y })
+          : undefined;
+        if (override !== null) {
+          successToken = await tokenManager.issueSuccessToken(override ?? undefined);
+        }
       }
 
-      console.log('[verify]', { x, y, success, token: payload.jti });
+      logInfo('[verify]', { x, y, success, token: payload.jti });
       res.json({
         success,
         reload: !success,
@@ -238,7 +301,7 @@ export const createCaptchaExpressRouter = ({
         successTokenExpiresIn: successToken?.expiresInMs ?? null
       });
     } catch (error) {
-      console.error('[verify] token decrypt failed', error);
+      logError('[verify] token decrypt failed', error);
       res.status(401).json({ error: 'invalid-token', reload: true });
     }
   });

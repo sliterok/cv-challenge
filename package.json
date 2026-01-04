@@ -4,20 +4,25 @@
   "private": true,
   "description": "Monorepo workspace for CV Challenge client and server packages.",
   "scripts": {
-    "dev:server": "pnpm -C packages/server dev",
+    "dev:server": "pnpm -C apps/server dev",
     "dev:demo": "pnpm -C apps/demo dev",
     "dev:plugin": "pnpm -C packages/react-plugin dev",
     "dev": "concurrently -n server,demo -c cyan,magenta \"pnpm dev:server\" \"pnpm dev:demo\"",
-    "start": "pnpm -C packages/server start",
+    "start": "pnpm -C apps/server start",
     "build": "pnpm -C packages/server build",
+    "build:server": "pnpm -C apps/server build",
     "build:demo": "pnpm -C apps/demo build",
-    "build:plugin": "pnpm -C packages/react-plugin build"
+    "build:plugin": "pnpm -C packages/react-plugin build",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
+    "@changesets/cli": "^2.27.12",
     "concurrently": "^9.2.1"
   }
 }

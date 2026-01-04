@@ -12,8 +12,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/captcha': 'http://localhost:3000',
-      '/verify': 'http://localhost:3000'
+      '/challenge': 'http://localhost:3000'
     }
   }
 });

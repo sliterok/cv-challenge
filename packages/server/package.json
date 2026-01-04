@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "Server-side engine and Express adapter for the CV Challenge interactive verification flow.",
   "keywords": [
-    "captcha",
     "verification",
     "challenge",
     "express",
@@ -23,8 +22,6 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsx src/server.ts",
-    "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json"
   },
   "opencv4nodejs": {
@@ -41,7 +38,6 @@
     "@types/express": "^5.0.3",
     "@types/fluent-ffmpeg": "^2.1.25",
     "@types/node": "^22.18.0",
-    "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }
 }

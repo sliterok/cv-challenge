@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "React widget for the CV Challenge interactive 3D verification flow.",
   "keywords": [
-    "captcha",
     "verification",
     "challenge",
     "react",

@@ -8,30 +8,32 @@ type VerifyResult = {
   successTokenExpiresIn?: number | null;
 };
 
-export type AltchaCaptchaProps = {
+export type CvChallengeProps = {
   apiBaseUrl?: string;
   className?: string;
   style?: React.CSSProperties;
   width?: number;
   height?: number;
+  autoLoad?: boolean;
   onVerify?: (result: VerifyResult) => void;
   onError?: (message: string) => void;
   onDebug?: (data: unknown) => void;
 };
 
-type Status = 'loading' | 'ready' | 'expired' | 'verified';
+type Status = 'idle' | 'loading' | 'ready' | 'expired' | 'verified';
 
 const joinUrl = (baseUrl: string, path: string): string => {
   if (!baseUrl) return path;
   return `${baseUrl.replace(/\/$/, '')}${path}`;
 };
 
-export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
+export const CvChallenge: React.FC<CvChallengeProps> = ({
   apiBaseUrl = '',
   className,
   style,
   width = 180,
   height = 60,
+  autoLoad = true,
   onVerify,
   onError,
   onDebug
@@ -43,7 +45,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
   const successTokenExpiresAtRef = useRef<number | null>(null);
   const successTimerRef = useRef<number | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
-  const [status, setStatus] = useState<Status>('loading');
+  const [status, setStatus] = useState<Status>(autoLoad ? 'loading' : 'idle');
   const [token, setToken] = useState<string | null>(null);
   const [loadingCountdown, setLoadingCountdown] = useState<number | null>(null);
 
@@ -121,7 +123,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     countdownTimerRef.current = window.setInterval(tick, 100);
   };
 
-  const loadCaptcha = useCallback(async () => {
+  const loadChallenge = useCallback(async () => {
     setStatus('loading');
     setToken(null);
     clearExpiryTimer();
@@ -134,23 +136,24 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     try {
       const headers: Record<string, string> = {};
       if (successToken) {
-        headers['x-captcha-success-token'] = successToken;
+        headers['x-challenge-success-token'] = successToken;
       }
-      const response = await fetch(joinUrl(apiBaseUrl, '/captcha'), { cache: 'no-store', headers });
+      const response = await fetch(joinUrl(apiBaseUrl, '/challenge'), { cache: 'no-store', headers });
       if (!response.ok) {
         setStatus('expired');
-        onError?.('captcha-fetch-failed');
+        onError?.('challenge-fetch-failed');
         clearCountdown();
         return;
       }
-      const tokenHeader = response.headers.get('x-captcha-token');
+      const tokenHeader = response.headers.get('x-challenge-token');
       if (!tokenHeader) {
         setStatus('expired');
-        onError?.('captcha-token-missing');
+        onError?.('challenge-token-missing');
+        clearCountdown();
         return;
       }
-      const expiresAtHeader = response.headers.get('x-captcha-expires-at');
-      const expiresInHeader = response.headers.get('x-captcha-expires-in');
+      const expiresAtHeader = response.headers.get('x-challenge-expires-at');
+      const expiresInHeader = response.headers.get('x-challenge-expires-in');
       const expiresAtMs = expiresAtHeader
         ? Number(expiresAtHeader)
         : Date.now() + Number(expiresInHeader ?? 20000);
@@ -179,14 +182,19 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
       onDebug?.({ token: tokenHeader.slice(0, 12), expiresAt: expiresAtMs });
     } catch (error) {
       setStatus('expired');
-      onError?.('captcha-request-failed');
+      onError?.('challenge-request-failed');
       clearCountdown();
       onDebug?.(error);
     }
   }, [apiBaseUrl, onDebug, onError]);
 
   useEffect(() => {
-    loadCaptcha();
+    if (autoLoad) {
+      loadChallenge();
+    } else {
+      setStatus('idle');
+      setLoadingCountdown(null);
+    }
     return () => {
       clearExpiryTimer();
       clearSuccessTimer();
@@ -196,7 +204,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
         objectUrlRef.current = null;
       }
     };
-  }, [loadCaptcha]);
+  }, [autoLoad, loadChallenge]);
 
   const getClickCoords = (event: React.MouseEvent<HTMLVideoElement>): { x: number; y: number } | null => {
     const video = videoRef.current;
@@ -216,7 +224,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     if (!coords) return;
 
     try {
-      const response = await fetch(joinUrl(apiBaseUrl, '/verify'), {
+      const response = await fetch(joinUrl(apiBaseUrl, '/challenge/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, x: coords.x, y: coords.y })
@@ -226,7 +234,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
       onVerify?.({ success, reload: data.reload });
       onDebug?.(data);
       if (!success || data.reload) {
-        await loadCaptcha();
+        await loadChallenge();
         return;
       }
       if (data.successToken) {
@@ -245,7 +253,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     } catch (error) {
       onError?.('verify-request-failed');
       onDebug?.(error);
-      await loadCaptcha();
+      await loadChallenge();
     }
   };
 
@@ -281,6 +289,8 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     cursor: 'pointer'
   };
 
+  const cursorStyle = status === 'ready' ? 'crosshair' : 'default';
+
   return (
     <div className={className} style={wrapperStyle}>
       <video
@@ -292,8 +302,15 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
         loop
         autoPlay
         onClick={handleClick}
-        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'fill', cursor: 'crosshair' }}
+        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'fill', cursor: cursorStyle }}
       />
+      {status === 'idle' && (
+        <div style={overlayStyle}>
+          <button type="button" style={buttonStyle} onClick={loadChallenge}>
+            Load challenge
+          </button>
+        </div>
+      )}
       {status === 'loading' && (
         <div style={overlayStyle}>
           {loadingCountdown !== null ? `Generating ${loadingCountdown.toFixed(1)}s` : 'Loading...'}
@@ -302,7 +319,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
       {status === 'expired' && (
         <div style={overlayStyle}>
           <span>Expired</span>
-          <button type="button" style={buttonStyle} onClick={loadCaptcha}>
+          <button type="button" style={buttonStyle} onClick={loadChallenge}>
             Reload
           </button>
         </div>
@@ -310,7 +327,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
       {status === 'verified' && (
         <div style={overlayStyle}>
           <span>Verified</span>
-          <button type="button" style={buttonStyle} onClick={loadCaptcha}>
+          <button type="button" style={buttonStyle} onClick={loadChallenge}>
             Reset
           </button>
         </div>
@@ -319,4 +336,4 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
   );
 };
 
-export default AltchaCaptcha;
+export default CvChallenge;

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { AltchaCaptcha } from '@cv-challenge/react-plugin';
+import { CvChallenge } from '@cv-challenge/react-plugin';
 
 const App: React.FC = () => {
   const pageStyle = useMemo<React.CSSProperties>(
@@ -26,7 +26,7 @@ const App: React.FC = () => {
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
-        <AltchaCaptcha
+        <CvChallenge
           onVerify={result => {
             console.log('[verify]', result);
           }}
