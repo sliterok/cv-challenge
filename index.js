@@ -1,7 +1,7 @@
 const cv = require('opencv4nodejs');
 const ffmpeg = require('fluent-ffmpeg');
 const { PassThrough } = require('stream');
-const SimplexNoise = require('simplex-noise');
+const { createNoise2D, createNoise3D } = require('simplex-noise');
 
 class Motion3DCaptcha {
     constructor(width = 640, height = 480, durationSec = 3) {
@@ -9,7 +9,8 @@ class Motion3DCaptcha {
         this.height = height;
         this.fps = 30;
         this.totalFrames = durationSec * this.fps;
-        this.noise = new SimplexNoise();
+        this.noise2D = createNoise2D();
+        this.noise3D = createNoise3D();
         
         // Define 3D Mesh: A more complex sphere-like blob for better "shape shifting"
         this.baseVertices = [];
@@ -67,8 +68,8 @@ class Motion3DCaptcha {
                 // Movement Logic
                 const freqMove = 0.5;
                 const tvec = new cv.Vec3(
-                    (i - 1) * 8 + (this.noise.noise2D(seed, time * freqMove) * 2), // Spread out X
-                    this.noise.noise2D(seed + 1, time * freqMove) * 2,            // Y movement
+                    (i - 1) * 8 + (this.noise2D(seed, time * freqMove) * 2), // Spread out X
+                    this.noise2D(seed + 1, time * freqMove) * 2,            // Y movement
                     25 // Z Depth (Make sure this is deep enough to be in FOV)
                 );
 
@@ -77,7 +78,7 @@ class Motion3DCaptcha {
                 // SHAPE SHIFTING: Apply noise to each vertex individually
                 const morphFreq = isTarget ? 4.0 : 1.0; // Target shifts shape faster/differently
                 const morphedVertices = this.baseVertices.map((v, idx) => {
-                    const offset = this.noise.noise3D(seed + idx, time * morphFreq, i) * 1.5;
+                    const offset = this.noise3D(seed + idx, time * morphFreq, i) * 1.5;
                     return new cv.Point3(v.x + offset, v.y + offset, v.z + offset);
                 });
 
