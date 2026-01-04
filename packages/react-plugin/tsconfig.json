@@ -6,6 +6,7 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "skipLibCheck": true,
+    "types": ["react", "react-dom"],
     "declaration": true,
     "emitDeclarationOnly": true,
     "declarationMap": false,

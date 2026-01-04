@@ -1,6 +1,6 @@
 import cv from 'opencv4nodejs';
 import ffmpeg from 'fluent-ffmpeg';
-import { PassThrough } from 'node:stream';
+import Stream, { PassThrough } from 'node:stream';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
 import type { Hitbox } from './types.js';
 
@@ -501,7 +501,7 @@ class Motion3DChallenge {
     }
   }
 
-  private streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  private streamToBuffer(stream: Stream): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       stream.on('data', chunk => chunks.push(chunk));
