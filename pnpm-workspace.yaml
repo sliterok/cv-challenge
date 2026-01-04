@@ -1,0 +1,3 @@
+onlyBuiltDependencies:
+  - opencv-build
+  - opencv4nodejs
