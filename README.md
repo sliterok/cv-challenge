@@ -24,6 +24,7 @@ Server-side 3D captcha rendering using OpenCV and FFmpeg. The demo renders 20 de
 - A single screen-space hitbox is computed by sampling the target across the clip.
 - The hitbox is encrypted into a JWT token, so no server-side session storage is required.
 - Tokens expire after ~20 seconds; failed attempts are blacklisted until expiry.
+- Express helpers are available via `createCaptchaExpressRouter` and `createCaptchaTokenManager`.
 
 ## Running the demo
 

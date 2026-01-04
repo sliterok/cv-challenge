@@ -14,6 +14,7 @@ type SceneObject = {
   isTarget: boolean;
   basePosition: Vec3;
   moveAmplitude: Vec3;
+  movePhase: Vec3;
   moveSpeed: number;
   rotationAxis: Vec3;
   rotationSpeed: number;
@@ -64,6 +65,11 @@ const clamp = (value: number, min: number, max: number): number =>
 
 const randRange = (min: number, max: number): number =>
   min + Math.random() * (max - min);
+
+const triangleWave = (t: number): number => {
+  const phase = t % 2;
+  return phase < 1 ? -1 + 2 * phase : 3 - 2 * phase;
+};
 
 const add = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
 const sub = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
@@ -227,6 +233,11 @@ class Motion3DCaptcha {
         '-pix_fmt yuva420p',
         '-auto-alt-ref 0',
         '-metadata:s:v:0 alpha_mode=1',
+        '-row-mt 1',
+        '-tile-columns 2',
+        '-frame-parallel 1',
+        '-deadline realtime',
+        '-cpu-used 6',
         '-lossless 1'
       ])
       .toFormat('webm');
@@ -300,6 +311,11 @@ class Motion3DCaptcha {
         moveAmplitude: isMoving
           ? { x: randRange(2.0, 3.6), y: randRange(1.2, 2.6), z: randRange(0.6, 1.6) }
           : { x: 0, y: 0, z: 0 },
+        movePhase: {
+          x: randRange(0, 2),
+          y: randRange(0, 2),
+          z: randRange(0, 2)
+        },
         moveSpeed: isMoving ? randRange(0.9, 1.9) : 0,
         rotationAxis: randomUnitVector(),
         rotationSpeed: isMoving ? randRange(0.9, 1.8) : randRange(0.08, 0.32),
@@ -405,9 +421,9 @@ class Motion3DCaptcha {
     const movePhase = time * obj.moveSpeed;
     const moveOffset = obj.isMoving
       ? {
-          x: this.noise2D(obj.seed + 21, movePhase) * obj.moveAmplitude.x,
-          y: this.noise2D(obj.seed + 31, movePhase) * obj.moveAmplitude.y,
-          z: this.noise2D(obj.seed + 41, movePhase) * obj.moveAmplitude.z
+          x: triangleWave(movePhase + obj.movePhase.x) * obj.moveAmplitude.x,
+          y: triangleWave(movePhase + obj.movePhase.y) * obj.moveAmplitude.y,
+          z: triangleWave(movePhase + obj.movePhase.z) * obj.moveAmplitude.z
         }
       : { x: 0, y: 0, z: 0 };
     const position = add(obj.basePosition, moveOffset);
@@ -496,3 +512,12 @@ class Motion3DCaptcha {
 }
 
 export default Motion3DCaptcha;
+export { createCaptchaExpressRouter, createCaptchaTokenManager } from './express-adapter.js';
+export type {
+  CaptchaTokenManagerOptions,
+  CaptchaTokenPayload,
+  CaptchaExpressAdapterOptions,
+  CaptchaVerifyContext,
+  CaptchaTokenManager,
+  CaptchaEngine
+} from './express-adapter.js';

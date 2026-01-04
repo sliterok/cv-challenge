@@ -18,7 +18,7 @@ const App: React.FC = () => {
 
   const cardStyle = useMemo<React.CSSProperties>(
     () => ({
-      width: 'min(520px, 92vw)'
+      width: 432
     }),
     []
   );
@@ -27,6 +27,8 @@ const App: React.FC = () => {
     <div style={pageStyle}>
       <div style={cardStyle}>
         <AltchaCaptcha
+          width={432}
+          height={180}
           onVerify={result => {
             console.log('[verify]', result);
           }}

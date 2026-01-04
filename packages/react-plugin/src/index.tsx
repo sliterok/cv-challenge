@@ -16,7 +16,7 @@ export type AltchaCaptchaProps = {
   onDebug?: (data: unknown) => void;
 };
 
-type Status = 'loading' | 'ready' | 'expired';
+type Status = 'loading' | 'ready' | 'expired' | 'verified';
 
 const joinUrl = (baseUrl: string, path: string): string => {
   if (!baseUrl) return path;
@@ -61,6 +61,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
   const loadCaptcha = useCallback(async () => {
     setStatus('loading');
     setToken(null);
+    clearExpiryTimer();
     try {
       const response = await fetch(joinUrl(apiBaseUrl, '/captcha'), { cache: 'no-store' });
       if (!response.ok) {
@@ -148,7 +149,14 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
       onDebug?.(data);
       if (!success || data.reload) {
         await loadCaptcha();
+        return;
       }
+      clearExpiryTimer();
+      const video = videoRef.current;
+      if (video) {
+        video.pause();
+      }
+      setStatus('verified');
     } catch (error) {
       onError?.('verify-request-failed');
       onDebug?.(error);
@@ -158,9 +166,8 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
 
   const wrapperStyle: React.CSSProperties = {
     position: 'relative',
-    width: '100%',
-    maxHeight: height,
-    aspectRatio: `${width} / ${height}`,
+    width,
+    height,
     overflow: 'hidden',
     borderRadius: 3,
     ...style
@@ -200,7 +207,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
         loop
         autoPlay
         onClick={handleClick}
-        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover', cursor: 'crosshair' }}
+        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'fill', cursor: 'crosshair' }}
       />
       {status === 'loading' && <div style={overlayStyle}>Loading...</div>}
       {status === 'expired' && (
@@ -208,6 +215,14 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
           <span>Expired</span>
           <button type="button" style={buttonStyle} onClick={loadCaptcha}>
             Reload
+          </button>
+        </div>
+      )}
+      {status === 'verified' && (
+        <div style={overlayStyle}>
+          <span>Verified</span>
+          <button type="button" style={buttonStyle} onClick={loadCaptcha}>
+            Reset
           </button>
         </div>
       )}
