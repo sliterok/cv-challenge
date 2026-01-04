@@ -2,11 +2,10 @@ import cv from 'opencv4nodejs';
 import ffmpeg from 'fluent-ffmpeg';
 import { PassThrough } from 'node:stream';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
+import type { Hitbox } from './types.js';
 
 type Vec3 = { x: number; y: number; z: number };
 type Rgb = { r: number; g: number; b: number };
-
-export type Hitbox = { x: number; y: number; width: number; height: number };
 
 type SceneObject = {
   id: number;
@@ -186,7 +185,7 @@ class Motion3DCaptcha {
   private keyStrength = 0.95;
   private fillStrength = 0.55;
 
-  constructor(width = 432, height = 180, durationSec = 3, objectCount = 20) {
+  constructor(width = 180, height = 60, durationSec = 3, objectCount = 20) {
     this.width = width;
     this.height = height;
     this.fps = 30;
@@ -513,6 +512,7 @@ class Motion3DCaptcha {
 }
 
 export default Motion3DCaptcha;
+export type { Hitbox } from './types.js';
 export { createCaptchaExpressRouter, createCaptchaTokenManager } from './express-adapter.js';
 export type {
   CaptchaTokenManagerOptions,

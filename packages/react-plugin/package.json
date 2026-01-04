@@ -1,7 +1,15 @@
 {
-  "name": "@cv-captcha/react",
+  "name": "@cv-challenge/react-plugin",
   "version": "0.1.0",
-  "private": true,
+  "description": "React widget for the CV Challenge interactive 3D verification flow.",
+  "keywords": [
+    "captcha",
+    "verification",
+    "challenge",
+    "react",
+    "widget"
+  ],
+  "license": "ISC",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

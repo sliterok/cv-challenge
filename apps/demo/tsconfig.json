@@ -5,7 +5,7 @@
     "jsx": "react-jsx",
     "moduleResolution": "Bundler",
     "paths": {
-      "@cv-captcha/react": ["../../packages/react-plugin/src/index.tsx"]
+      "@cv-challenge/react-plugin": ["../../packages/react-plugin/src/index.tsx"]
     },
     "strict": true,
     "skipLibCheck": true

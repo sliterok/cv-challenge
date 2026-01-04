@@ -1,7 +1,7 @@
 import express, { type Request, type Response, type Router } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { EncryptJWT, jwtDecrypt } from 'jose';
-import type { Hitbox } from './index.js';
+import type { Hitbox } from './types.js';
 
 export type CaptchaTokenPayload = {
   hitbox: Hitbox;

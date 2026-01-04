@@ -4,7 +4,7 @@ import { createCaptchaExpressRouter, createCaptchaTokenManager } from './express
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
-const captchaEngine = new Motion3DCaptcha(432, 180, 3, 20);
+const captchaEngine = new Motion3DCaptcha();
 
 const secret = process.env.CAPTCHA_JWT_SECRET ?? 'dev-only-change-me';
 const tokenManager = createCaptchaTokenManager({ secret, tokenTtlSec: 20 });

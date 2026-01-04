@@ -7,7 +7,7 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.tsx'),
-      name: 'CvCaptchaReact',
+      name: 'CvChallengeReact',
       formats: ['es']
     },
     rollupOptions: {

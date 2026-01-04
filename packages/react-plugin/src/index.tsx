@@ -30,8 +30,8 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
   apiBaseUrl = '',
   className,
   style,
-  width = 432,
-  height = 180,
+  width = 180,
+  height = 60,
   onVerify,
   onError,
   onDebug
@@ -42,8 +42,10 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
   const successTokenRef = useRef<string | null>(null);
   const successTokenExpiresAtRef = useRef<number | null>(null);
   const successTimerRef = useRef<number | null>(null);
+  const countdownTimerRef = useRef<number | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [token, setToken] = useState<string | null>(null);
+  const [loadingCountdown, setLoadingCountdown] = useState<number | null>(null);
 
   const clearExpiryTimer = () => {
     if (expiryTimerRef.current !== null) {
@@ -98,13 +100,39 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     return tokenValue;
   };
 
+  const clearCountdown = () => {
+    if (countdownTimerRef.current !== null) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  };
+
+  const startCountdown = (durationMs: number) => {
+    clearCountdown();
+    const deadline = Date.now() + durationMs;
+    const tick = () => {
+      const remaining = Math.max(0, deadline - Date.now());
+      setLoadingCountdown(Number((remaining / 1000).toFixed(1)));
+      if (remaining <= 0) {
+        clearCountdown();
+      }
+    };
+    tick();
+    countdownTimerRef.current = window.setInterval(tick, 100);
+  };
+
   const loadCaptcha = useCallback(async () => {
     setStatus('loading');
     setToken(null);
     clearExpiryTimer();
+    const successToken = getSuccessToken();
+    if (successToken) {
+      setLoadingCountdown(null);
+    } else {
+      startCountdown(5000);
+    }
     try {
       const headers: Record<string, string> = {};
-      const successToken = getSuccessToken();
       if (successToken) {
         headers['x-captcha-success-token'] = successToken;
       }
@@ -112,6 +140,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
       if (!response.ok) {
         setStatus('expired');
         onError?.('captcha-fetch-failed');
+        clearCountdown();
         return;
       }
       const tokenHeader = response.headers.get('x-captcha-token');
@@ -144,12 +173,14 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
         },
         { once: true }
       );
+      clearCountdown();
       setToken(tokenHeader);
       scheduleExpiry(expiresAtMs);
       onDebug?.({ token: tokenHeader.slice(0, 12), expiresAt: expiresAtMs });
     } catch (error) {
       setStatus('expired');
       onError?.('captcha-request-failed');
+      clearCountdown();
       onDebug?.(error);
     }
   }, [apiBaseUrl, onDebug, onError]);
@@ -159,6 +190,7 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
     return () => {
       clearExpiryTimer();
       clearSuccessTimer();
+      clearCountdown();
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
@@ -262,7 +294,11 @@ export const AltchaCaptcha: React.FC<AltchaCaptchaProps> = ({
         onClick={handleClick}
         style={{ width: '100%', height: '100%', display: 'block', objectFit: 'fill', cursor: 'crosshair' }}
       />
-      {status === 'loading' && <div style={overlayStyle}>Loading...</div>}
+      {status === 'loading' && (
+        <div style={overlayStyle}>
+          {loadingCountdown !== null ? `Generating ${loadingCountdown.toFixed(1)}s` : 'Loading...'}
+        </div>
+      )}
       {status === 'expired' && (
         <div style={overlayStyle}>
           <span>Expired</span>

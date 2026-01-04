@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { AltchaCaptcha } from '@cv-captcha/react';
+import { AltchaCaptcha } from '@cv-challenge/react-plugin';
 
 const App: React.FC = () => {
   const pageStyle = useMemo<React.CSSProperties>(
@@ -18,7 +18,7 @@ const App: React.FC = () => {
 
   const cardStyle = useMemo<React.CSSProperties>(
     () => ({
-      width: 432
+      width: 180
     }),
     []
   );
@@ -27,8 +27,6 @@ const App: React.FC = () => {
     <div style={pageStyle}>
       <div style={cardStyle}>
         <AltchaCaptcha
-          width={432}
-          height={180}
           onVerify={result => {
             console.log('[verify]', result);
           }}

@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@cv-captcha/react': resolve(__dirname, '../../packages/react-plugin/src/index.tsx')
+      '@cv-challenge/react-plugin': resolve(__dirname, '../../packages/react-plugin/src/index.tsx')
     }
   },
   server: {
