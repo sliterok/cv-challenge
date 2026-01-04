@@ -238,7 +238,8 @@ class Motion3DCaptcha {
         '-frame-parallel 1',
         '-deadline realtime',
         '-cpu-used 6',
-        '-lossless 1'
+        '-crf 30',
+        '-b:v 0'
       ])
       .toFormat('webm');
 
@@ -421,10 +422,10 @@ class Motion3DCaptcha {
     const movePhase = time * obj.moveSpeed;
     const moveOffset = obj.isMoving
       ? {
-          x: triangleWave(movePhase + obj.movePhase.x) * obj.moveAmplitude.x,
-          y: triangleWave(movePhase + obj.movePhase.y) * obj.moveAmplitude.y,
-          z: triangleWave(movePhase + obj.movePhase.z) * obj.moveAmplitude.z
-        }
+        x: triangleWave(movePhase + obj.movePhase.x) * obj.moveAmplitude.x,
+        y: triangleWave(movePhase + obj.movePhase.y) * obj.moveAmplitude.y,
+        z: triangleWave(movePhase + obj.movePhase.z) * obj.moveAmplitude.z
+      }
       : { x: 0, y: 0, z: 0 };
     const position = add(obj.basePosition, moveOffset);
 
