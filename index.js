@@ -24,12 +24,13 @@ class Motion3DCaptcha {
         }
         
         // Sane Camera Matrix: Focal length should be roughly equal to width for standard FOV
-        const focalLength = width * 0.8; 
+        const focalLength = width;
         this.cameraMatrix = new cv.Mat([
             [focalLength, 0, width / 2],
             [0, focalLength, height / 2],
             [0, 0, 1]
         ], cv.CV_64F);
+        this.distCoeffs = [0, 0, 0, 0, 0];
     }
 
     async generate() {
@@ -60,6 +61,7 @@ class Motion3DCaptcha {
             // but [0,0,0,0] is true transparency.
             const frame = new cv.Mat(this.height, this.width, cv.CV_8UC4, [0, 0, 0, 0]);
             const time = t / this.fps;
+            const mask = new cv.Mat(this.height, this.width, cv.CV_8UC1, 0);
 
             for (let i = 0; i < 3; i++) {
                 const isTarget = (i === targetIndex);
@@ -88,16 +90,22 @@ class Motion3DCaptcha {
                     rvec, 
                     tvec, 
                     this.cameraMatrix, 
-                    [0, 0, 0, 0, 0] // distCoeffs as array
+                    this.distCoeffs
                 );
 
                 // DRAWING
                 // Use bright colors to ensure they aren't "lost" in black
-                const color = isTarget ? [255, 100, 100, 255] : [180, 180, 180, 255];
+                const color = isTarget ? [255, 100, 100] : [180, 180, 180];
                 const points = projected.imagePoints.map(p => new cv.Point2(p.x, p.y));
-                
-                // Draw as convex hull to create a solid "blob"
-                frame.drawFillConvexPoly(points, new cv.Vec4(color[0], color[1], color[2], color[3]));
+                if (points.length < 3) {
+                    continue;
+                }
+
+                // Draw via mask so alpha gets written for the filled region.
+                const hullPoints = new cv.Contour(points).convexHull().getPoints();
+                mask.setTo(0);
+                mask.drawFillConvexPoly(hullPoints, new cv.Vec3(255, 255, 255));
+                frame.setTo(new cv.Vec4(color[0], color[1], color[2], 255), mask);
 
                 if (isTarget) {
                     const center = points.reduce((a, b) => ({ x: a.x + b.x, y: a.y + b.y }));
