@@ -319,8 +319,8 @@ class Motion3DChallenge {
         moveSpeed: isMoving ? randRange(0.9, 1.9) : 0,
         rotationAxis: randomUnitVector(),
         rotationSpeed: isMoving ? randRange(0.9, 1.8) : randRange(0.08, 0.32),
-        scaleBase: randRange(0.7, 1.05),
-        scaleAmp: isMoving ? randRange(0.1, 0.22) : randRange(0.03, 0.08),
+        scaleBase: randRange(0.62, 0.95),
+        scaleAmp: isMoving ? randRange(0.08, 0.18) : randRange(0.025, 0.06),
         scaleSpeed: isMoving ? randRange(0.8, 1.6) : randRange(0.18, 0.45),
         morphAmp: isMoving ? randRange(0.1, 0.24) : randRange(0.02, 0.06),
         morphSpeed: isMoving ? randRange(1.1, 2.1) : randRange(0.2, 0.55),
@@ -334,9 +334,9 @@ class Motion3DChallenge {
     const target = objects[targetId];
     target.isTarget = true;
     target.rotationSpeed *= 3.2;
-    target.scaleBase *= 1.08;
-    target.scaleAmp *= 2.6;
-    target.scaleSpeed *= 2.4;
+    target.scaleBase *= 1.04;
+    target.scaleAmp *= 1.7;
+    target.scaleSpeed *= 1.6;
     target.morphAmp *= 2.4;
     target.morphSpeed *= 2.8;
 
@@ -377,7 +377,7 @@ class Motion3DChallenge {
     let minY = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
     let maxY = Number.NEGATIVE_INFINITY;
-    const padding = 10;
+    const shrinkFactor = 0.9;
 
     for (let i = 0; i < samples; i += 1) {
       const time = (i / Math.max(samples - 1, 1)) * (this.totalFrames / this.fps);
@@ -399,10 +399,14 @@ class Motion3DChallenge {
       maxY = this.height * 0.6;
     }
 
-    minX = clamp(minX - padding, 0, this.width - 1);
-    minY = clamp(minY - padding, 0, this.height - 1);
-    maxX = clamp(maxX + padding, 0, this.width - 1);
-    maxY = clamp(maxY + padding, 0, this.height - 1);
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const width = Math.max(1, (maxX - minX) * shrinkFactor);
+    const height = Math.max(1, (maxY - minY) * shrinkFactor);
+    minX = clamp(centerX - width / 2, 0, this.width - 1);
+    minY = clamp(centerY - height / 2, 0, this.height - 1);
+    maxX = clamp(centerX + width / 2, 0, this.width - 1);
+    maxY = clamp(centerY + height / 2, 0, this.height - 1);
 
     return {
       x: minX,

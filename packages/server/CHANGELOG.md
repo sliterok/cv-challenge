@@ -1,5 +1,11 @@
 # @cv-challenge/server
 
+## 1.2.2
+
+### Patch Changes
+
+- change object scales
+
 ## 1.2.1
 
 ### Patch Changes
