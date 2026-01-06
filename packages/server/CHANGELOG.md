@@ -1,5 +1,11 @@
 # @cv-challenge/server
 
+## 1.2.0
+
+### Minor Changes
+
+- add backoff logic
+
 ## 1.1.1
 
 ### Patch Changes

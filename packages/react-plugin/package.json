@@ -1,6 +1,6 @@
 {
   "name": "@cv-challenge/react-plugin",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "React widget for the CV Challenge interactive 3D verification flow.",
   "keywords": [
     "verification",

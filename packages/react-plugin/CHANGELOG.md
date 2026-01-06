@@ -1,5 +1,11 @@
 # @cv-challenge/react-plugin
 
+## 1.1.0
+
+### Minor Changes
+
+- add backoff logic
+
 ## 1.0.2
 
 ### Patch Changes
