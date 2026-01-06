@@ -1,5 +1,11 @@
 # @cv-challenge/server
 
+## 1.2.1
+
+### Patch Changes
+
+- unverified tokens count towards backoff
+
 ## 1.2.0
 
 ### Minor Changes
