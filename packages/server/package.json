@@ -1,6 +1,6 @@
 {
   "name": "@cv-challenge/server",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Server-side engine and Express adapter for the CV Challenge interactive verification flow.",
   "keywords": [
     "verification",

@@ -28,7 +28,7 @@ Constructor defaults:
 - width: 180
 - height: 60
 - durationSec: 3
-- objectCount: 20 (capped at 20)
+- objectCount: 20
 
 ## Express adapter
 

@@ -190,7 +190,7 @@ class Motion3DChallenge {
     this.height = height;
     this.fps = 30;
     this.totalFrames = Math.max(1, Math.round(durationSec * this.fps));
-    this.objectCount = clamp(Math.round(objectCount), 1, 20);
+    this.objectCount = Math.max(1, Math.round(objectCount));
     this.noise2D = createNoise2D();
     this.noise3D = createNoise3D();
     this.camera = {
