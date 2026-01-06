@@ -52,6 +52,7 @@ const tokenManager = createChallengeTokenManager<{ sessionId: string }>({
 const router = createChallengeExpressRouter<{ sessionId: string }>({
   challenge: engine,
   tokenManager,
+  onChallenge: ({ req }) => String(req.headers['x-session-id'] ?? req.ip ?? ''),
   onVerified: async ({ req }) => {
     const sessionId = String(req.headers['x-session-id'] ?? '');
     if (!sessionId) return null;
@@ -78,6 +79,9 @@ app.use(router);
   - `X-Challenge-Expires-In`
 - Optional request header:
   - `X-Challenge-Success-Token`
+- 429 response when `onChallenge` identifies an active challenge:
+  - Body: `{ error: "challenge-already-issued", challengeExpiresAt, challengeExpiresIn }`
+  - Header: `Retry-After`
 
 `POST /challenge/verify`
 
@@ -105,6 +109,7 @@ app.use(router);
 
 - `challenge` (required): the engine instance.
 - `tokenManager` (required): token manager from `createChallengeTokenManager`.
+- `onChallenge`: optional callback that returns a unique key for the requester (session id, IP, etc). When provided, only one active challenge per key is allowed; additional `GET /challenge` requests return `429` until the prior challenge is verified or expires.
 - `onVerified`: optional callback; return `undefined` for default success token, object to override TTL/payload, or `null` to skip.
 - `validateSuccessToken`: optional validator for decoded success token payloads.
 - `debug`: `"none"` | `"error"` | `"info"` (default `"none"`).

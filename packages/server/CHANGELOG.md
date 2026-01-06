@@ -1,5 +1,11 @@
 # @cv-challenge/server
 
+## 1.1.0
+
+### Minor Changes
+
+- add onChallenge to avoid brute-forcing of tokens
+
 ## 1.0.3
 
 ### Patch Changes

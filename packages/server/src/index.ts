@@ -521,6 +521,7 @@ export type {
   SuccessTokenIssueOptions,
   ChallengeExpressAdapterOptions,
   ChallengeVerifyContext,
+  ChallengeRequestContext,
   ChallengeTokenManager,
   ChallengeEngine,
   ChallengeDebugLevel,

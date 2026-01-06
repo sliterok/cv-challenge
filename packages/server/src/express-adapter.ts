@@ -79,9 +79,17 @@ export type SuccessTokenValidationContext = {
   res: Response;
 };
 
+export type ChallengeRequestContext = {
+  req: Request;
+  res: Response;
+};
+
 export type ChallengeExpressAdapterOptions<TPayload extends Record<string, unknown> = Record<string, unknown>> = {
   challenge: ChallengeEngine;
   tokenManager: ChallengeTokenManager<TPayload>;
+  onChallenge?: (
+    context: ChallengeRequestContext
+  ) => Promise<string | null | undefined> | string | null | undefined;
   onVerified?: (
     context: ChallengeVerifyContext
   ) =>
@@ -214,6 +222,7 @@ const wait = (ms: number): Promise<void> =>
 export const createChallengeExpressRouter = <TPayload extends Record<string, unknown> = Record<string, unknown>>({
   challenge,
   tokenManager,
+  onChallenge,
   onVerified,
   validateSuccessToken,
   debug = 'none'
@@ -229,6 +238,8 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
     string,
     { successJti: string; successExpiresAt: number; challengeExpiresAt: number }
   >();
+  const activeChallenges = new Map<string, { jti: string; expiresAt: number }>();
+  const activeChallengeKeysByJti = new Map<string, string>();
 
   const logInfo = (...args: unknown[]) => {
     if (debug === 'info') {
@@ -254,6 +265,43 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
         challengeSuccessLinks.delete(challengeJti);
       }
     }
+  };
+
+  const pruneActiveChallenges = () => {
+    const now = Date.now();
+    for (const [key, entry] of activeChallenges.entries()) {
+      if (entry.expiresAt <= now) {
+        activeChallenges.delete(key);
+        activeChallengeKeysByJti.delete(entry.jti);
+      }
+    }
+  };
+
+  const registerActiveChallenge = (key: string, jti: string, expiresAt: number) => {
+    const existing = activeChallenges.get(key);
+    if (existing) {
+      activeChallengeKeysByJti.delete(existing.jti);
+    }
+    activeChallenges.set(key, { jti, expiresAt });
+    activeChallengeKeysByJti.set(jti, key);
+  };
+
+  const clearActiveChallenge = (jti: string) => {
+    const key = activeChallengeKeysByJti.get(jti);
+    if (!key) return;
+    activeChallengeKeysByJti.delete(jti);
+    const existing = activeChallenges.get(key);
+    if (existing?.jti === jti) {
+      activeChallenges.delete(key);
+    }
+  };
+
+  const resolveChallengeKey = async (req: Request, res: Response): Promise<string | null> => {
+    if (!onChallenge) return null;
+    const key = await onChallenge({ req, res });
+    if (typeof key !== 'string') return null;
+    const trimmed = key.trim();
+    return trimmed.length > 0 ? trimmed : null;
   };
 
   const registerSuccessToken = (jti: string, expiresAt: number) => {
@@ -300,6 +348,21 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       const requestStart = Date.now();
       tokenManager.prune();
       pruneSuccessState();
+      pruneActiveChallenges();
+      const challengeKey = await resolveChallengeKey(req, res);
+      if (challengeKey) {
+        const active = activeChallenges.get(challengeKey);
+        if (active && active.expiresAt > Date.now()) {
+          const expiresInMs = Math.max(0, active.expiresAt - Date.now());
+          res.set('Retry-After', String(Math.ceil(expiresInMs / 1000)));
+          res.status(429).json({
+            error: 'challenge-already-issued',
+            challengeExpiresAt: active.expiresAt,
+            challengeExpiresIn: expiresInMs
+          });
+          return;
+        }
+      }
       let hasValidSuccessToken = false;
       let successTokenContext: { jti: string; expMs: number } | null = null;
       const successTokenHeader = req.header('x-challenge-success-token');
@@ -325,6 +388,9 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       }
       const { videoBuffer, hitbox, debug: renderDebug } = await challenge.generate();
       const { token, jti, expiresAt, expiresInMs } = await tokenManager.issueToken(hitbox);
+      if (challengeKey) {
+        registerActiveChallenge(challengeKey, jti, expiresAt);
+      }
       if (hasValidSuccessToken && successTokenContext) {
         challengeSuccessLinks.set(jti, {
           successJti: successTokenContext.jti,
@@ -363,7 +429,9 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       const payload = await tokenManager.decryptToken(token);
       tokenManager.prune();
       pruneSuccessState();
+      pruneActiveChallenges();
       const expiresAt = payload.exp * 1000;
+      clearActiveChallenge(payload.jti);
       if (tokenManager.isBlacklisted(payload.jti)) {
         res.status(401).json({ error: 'token-blacklisted', reload: true });
         return;
