@@ -1,6 +1,6 @@
 {
   "name": "@cv-challenge/react-plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "React widget for the CV Challenge interactive 3D verification flow.",
   "keywords": [
     "verification",
@@ -8,6 +8,10 @@
     "react",
     "widget"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sliterok/cv-challenge.git"
+  },
   "license": "ISC",
   "type": "module",
   "main": "dist/react-plugin.js",

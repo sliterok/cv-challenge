@@ -1,6 +1,6 @@
 {
   "name": "@cv-challenge/server",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Server-side engine and Express adapter for the CV Challenge interactive verification flow.",
   "keywords": [
     "verification",
@@ -8,6 +8,10 @@
     "express",
     "opencv"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sliterok/cv-challenge.git"
+  },
   "license": "ISC",
   "type": "module",
   "main": "dist/index.js",
