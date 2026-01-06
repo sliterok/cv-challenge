@@ -8,6 +8,14 @@ type VerifyResult = {
   successTokenExpiresIn?: number | null;
 };
 
+type ChallengeErrorPayload = {
+  error?: string;
+  backoffExpiresAt?: number;
+  backoffExpiresIn?: number;
+  challengeExpiresAt?: number;
+  challengeExpiresIn?: number;
+};
+
 export type CvChallengeProps = {
   apiBaseUrl?: string;
   className?: string;
@@ -25,6 +33,35 @@ type Status = 'idle' | 'loading' | 'ready' | 'expired' | 'verified';
 const joinUrl = (baseUrl: string, path: string): string => {
   if (!baseUrl) return path;
   return `${baseUrl.replace(/\/$/, '')}${path}`;
+};
+
+const resolveRetryAfterMs = (
+  response: Response,
+  payload: ChallengeErrorPayload | null | undefined
+): number => {
+  const retryAfter = response.headers.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) {
+      return Math.max(0, Math.floor(seconds * 1000));
+    }
+    const dateMs = Date.parse(retryAfter);
+    if (!Number.isNaN(dateMs)) {
+      return Math.max(0, dateMs - Date.now());
+    }
+  }
+
+  const expiresIn = payload?.backoffExpiresIn ?? payload?.challengeExpiresIn;
+  if (typeof expiresIn === 'number' && Number.isFinite(expiresIn)) {
+    return Math.max(0, Math.floor(expiresIn));
+  }
+
+  const expiresAt = payload?.backoffExpiresAt ?? payload?.challengeExpiresAt;
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt)) {
+    return Math.max(0, Math.floor(expiresAt - Date.now()));
+  }
+
+  return 0;
 };
 
 export const CvChallenge: React.FC<CvChallengeProps> = ({
@@ -45,9 +82,11 @@ export const CvChallenge: React.FC<CvChallengeProps> = ({
   const successTokenExpiresAtRef = useRef<number | null>(null);
   const successTimerRef = useRef<number | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
+  const retryTimerRef = useRef<number | null>(null);
   const [status, setStatus] = useState<Status>(autoLoad ? 'loading' : 'idle');
   const [token, setToken] = useState<string | null>(null);
   const [loadingCountdown, setLoadingCountdown] = useState<number | null>(null);
+  const [loadingLabel, setLoadingLabel] = useState<'Loading' | 'Generating' | 'Retrying in'>('Loading');
 
   const clearExpiryTimer = () => {
     if (expiryTimerRef.current !== null) {
@@ -109,6 +148,13 @@ export const CvChallenge: React.FC<CvChallengeProps> = ({
     }
   };
 
+  const clearRetryTimer = () => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  };
+
   const startCountdown = (durationMs: number) => {
     clearCountdown();
     const deadline = Date.now() + durationMs;
@@ -127,10 +173,13 @@ export const CvChallenge: React.FC<CvChallengeProps> = ({
     setStatus('loading');
     setToken(null);
     clearExpiryTimer();
+    clearRetryTimer();
     const successToken = getSuccessToken();
     if (successToken) {
+      setLoadingLabel('Loading');
       setLoadingCountdown(null);
     } else {
+      setLoadingLabel('Generating');
       startCountdown(5000);
     }
     try {
@@ -139,6 +188,20 @@ export const CvChallenge: React.FC<CvChallengeProps> = ({
         headers['x-challenge-success-token'] = successToken;
       }
       const response = await fetch(joinUrl(apiBaseUrl, '/challenge'), { cache: 'no-store', headers });
+      if (response.status === 429) {
+        const payload = (await response.json().catch(() => null)) as ChallengeErrorPayload | null;
+        const retryAfterMs = resolveRetryAfterMs(response, payload);
+        const delayMs = Math.max(1000, retryAfterMs);
+        setLoadingLabel('Retrying in');
+        startCountdown(delayMs);
+        clearRetryTimer();
+        retryTimerRef.current = window.setTimeout(() => {
+          retryTimerRef.current = null;
+          loadChallenge();
+        }, delayMs);
+        onDebug?.({ ...payload, retryAfterMs: delayMs });
+        return;
+      }
       if (!response.ok) {
         setStatus('expired');
         onError?.('challenge-fetch-failed');
@@ -194,11 +257,13 @@ export const CvChallenge: React.FC<CvChallengeProps> = ({
     } else {
       setStatus('idle');
       setLoadingCountdown(null);
+      setLoadingLabel('Loading');
     }
     return () => {
       clearExpiryTimer();
       clearSuccessTimer();
       clearCountdown();
+      clearRetryTimer();
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
@@ -313,7 +378,7 @@ export const CvChallenge: React.FC<CvChallengeProps> = ({
       )}
       {status === 'loading' && (
         <div style={overlayStyle}>
-          {loadingCountdown !== null ? `Generating ${loadingCountdown.toFixed(1)}s` : 'Loading...'}
+          {loadingCountdown !== null ? `${loadingLabel} ${loadingCountdown.toFixed(1)}s` : `${loadingLabel}...`}
         </div>
       )}
       {status === 'expired' && (

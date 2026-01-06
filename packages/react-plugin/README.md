@@ -37,6 +37,7 @@ export const Example = () => (
 
 - The widget auto-loads a challenge video unless `autoLoad` is disabled.
 - On cold start, it shows a 5s countdown and waits for the server padding.
+- When `/challenge` responds with `429` and `Retry-After`, the widget shows a retry countdown and auto-retries.
 - Success tokens are stored in memory and sent as `X-Challenge-Success-Token`.
 - Expired challenges show a reload button; verified challenges show a reset button.
 
