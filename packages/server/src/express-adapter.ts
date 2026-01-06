@@ -300,6 +300,7 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       if (entry.expiresAt <= now) {
         activeChallenges.delete(key);
         activeChallengeKeysByJti.delete(entry.jti);
+        recordBackoffFailure(key);
       }
     }
   };
