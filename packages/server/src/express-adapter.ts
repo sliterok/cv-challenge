@@ -84,12 +84,20 @@ export type ChallengeRequestContext = {
   res: Response;
 };
 
+export type ChallengeBackoffOptions = {
+  enabled?: boolean;
+  windowMs?: number;
+  scheduleMs?: number[];
+  maxMs?: number;
+};
+
 export type ChallengeExpressAdapterOptions<TPayload extends Record<string, unknown> = Record<string, unknown>> = {
   challenge: ChallengeEngine;
   tokenManager: ChallengeTokenManager<TPayload>;
   onChallenge?: (
     context: ChallengeRequestContext
   ) => Promise<string | null | undefined> | string | null | undefined;
+  backoff?: ChallengeBackoffOptions;
   onVerified?: (
     context: ChallengeVerifyContext
   ) =>
@@ -219,10 +227,15 @@ const wait = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+const defaultBackoffWindowMs = 10 * 60 * 1000;
+const defaultBackoffScheduleMs = [0, 0, 2000, 5000, 10000, 20000, 35000, 55000, 75000];
+const defaultBackoffMaxMs = 75 * 1000;
+
 export const createChallengeExpressRouter = <TPayload extends Record<string, unknown> = Record<string, unknown>>({
   challenge,
   tokenManager,
   onChallenge,
+  backoff,
   onVerified,
   validateSuccessToken,
   debug = 'none'
@@ -230,6 +243,19 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
   const router = express.Router();
   const minGenerationMs = 5000;
   const maxSuccessFailures = 3;
+  const backoffEnabled = Boolean(onChallenge) && (backoff?.enabled ?? true);
+  const backoffWindowMs =
+    typeof backoff?.windowMs === 'number' && Number.isFinite(backoff.windowMs) && backoff.windowMs > 0
+      ? Math.floor(backoff.windowMs)
+      : defaultBackoffWindowMs;
+  const backoffScheduleMs =
+    Array.isArray(backoff?.scheduleMs) && backoff.scheduleMs.length > 0
+      ? backoff.scheduleMs
+      : defaultBackoffScheduleMs;
+  const backoffMaxMs =
+    typeof backoff?.maxMs === 'number' && Number.isFinite(backoff.maxMs) && backoff.maxMs > 0
+      ? Math.floor(backoff.maxMs)
+      : defaultBackoffMaxMs;
   const successTokenState = new Map<
     string,
     { expiresAt: number; consecutiveFailures: number; invalidated: boolean }
@@ -240,6 +266,7 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
   >();
   const activeChallenges = new Map<string, { jti: string; expiresAt: number }>();
   const activeChallengeKeysByJti = new Map<string, string>();
+  const backoffStateByKey = new Map<string, { failures: number; lastFailureAt: number; blockedUntil: number }>();
 
   const logInfo = (...args: unknown[]) => {
     if (debug === 'info') {
@@ -286,14 +313,15 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
     activeChallengeKeysByJti.set(jti, key);
   };
 
-  const clearActiveChallenge = (jti: string) => {
+  const clearActiveChallenge = (jti: string): string | null => {
     const key = activeChallengeKeysByJti.get(jti);
-    if (!key) return;
+    if (!key) return null;
     activeChallengeKeysByJti.delete(jti);
     const existing = activeChallenges.get(key);
     if (existing?.jti === jti) {
       activeChallenges.delete(key);
     }
+    return key;
   };
 
   const resolveChallengeKey = async (req: Request, res: Response): Promise<string | null> => {
@@ -302,6 +330,54 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
     if (typeof key !== 'string') return null;
     const trimmed = key.trim();
     return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const getBackoffDelayMs = (failures: number): number => {
+    if (!backoffEnabled || failures <= 0) return 0;
+    const index = Math.min(failures - 1, backoffScheduleMs.length - 1);
+    const delay = backoffScheduleMs[index] ?? 0;
+    return Math.min(Math.max(0, delay), backoffMaxMs);
+  };
+
+  const pruneBackoffState = () => {
+    if (!backoffEnabled) return;
+    const now = Date.now();
+    for (const [key, state] of backoffStateByKey.entries()) {
+      if (now - state.lastFailureAt > backoffWindowMs) {
+        backoffStateByKey.delete(key);
+      }
+    }
+  };
+
+  const getBackoffState = (key: string) => {
+    if (!backoffEnabled) return null;
+    const state = backoffStateByKey.get(key);
+    if (!state) return null;
+    if (Date.now() - state.lastFailureAt > backoffWindowMs) {
+      backoffStateByKey.delete(key);
+      return null;
+    }
+    return state;
+  };
+
+  const resetBackoffState = (key: string) => {
+    if (!backoffEnabled) return;
+    backoffStateByKey.delete(key);
+  };
+
+  const recordBackoffFailure = (key: string) => {
+    if (!backoffEnabled) return;
+    const now = Date.now();
+    const existing = backoffStateByKey.get(key);
+    const state =
+      existing && now - existing.lastFailureAt <= backoffWindowMs
+        ? existing
+        : { failures: 0, lastFailureAt: now, blockedUntil: 0 };
+    state.failures += 1;
+    state.lastFailureAt = now;
+    const delayMs = getBackoffDelayMs(state.failures);
+    state.blockedUntil = Math.max(state.blockedUntil, now + delayMs);
+    backoffStateByKey.set(key, state);
   };
 
   const registerSuccessToken = (jti: string, expiresAt: number) => {
@@ -349,11 +425,24 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       tokenManager.prune();
       pruneSuccessState();
       pruneActiveChallenges();
+      pruneBackoffState();
       const challengeKey = await resolveChallengeKey(req, res);
       if (challengeKey) {
+        const now = Date.now();
+        const backoffState = getBackoffState(challengeKey);
+        if (backoffState && backoffState.blockedUntil > now) {
+          const backoffMs = Math.max(0, backoffState.blockedUntil - now);
+          res.set('Retry-After', String(Math.ceil(backoffMs / 1000)));
+          res.status(429).json({
+            error: 'challenge-backoff',
+            backoffExpiresAt: backoffState.blockedUntil,
+            backoffExpiresIn: backoffMs
+          });
+          return;
+        }
         const active = activeChallenges.get(challengeKey);
-        if (active && active.expiresAt > Date.now()) {
-          const expiresInMs = Math.max(0, active.expiresAt - Date.now());
+        if (active && active.expiresAt > now) {
+          const expiresInMs = Math.max(0, active.expiresAt - now);
           res.set('Retry-After', String(Math.ceil(expiresInMs / 1000)));
           res.status(429).json({
             error: 'challenge-already-issued',
@@ -430,14 +519,22 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       tokenManager.prune();
       pruneSuccessState();
       pruneActiveChallenges();
+      pruneBackoffState();
       const expiresAt = payload.exp * 1000;
-      clearActiveChallenge(payload.jti);
+      const challengeKey = clearActiveChallenge(payload.jti);
       if (tokenManager.isBlacklisted(payload.jti)) {
         res.status(401).json({ error: 'token-blacklisted', reload: true });
         return;
       }
 
       const success = challenge.validate({ x, y }, payload.hitbox);
+      if (challengeKey) {
+        if (success) {
+          resetBackoffState(challengeKey);
+        } else {
+          recordBackoffFailure(challengeKey);
+        }
+      }
       const successLink = challengeSuccessLinks.get(payload.jti);
       if (successLink) {
         recordSuccessTokenResult(successLink.successJti, successLink.successExpiresAt, success);

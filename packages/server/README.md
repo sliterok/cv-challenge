@@ -82,6 +82,9 @@ app.use(router);
 - 429 response when `onChallenge` identifies an active challenge:
   - Body: `{ error: "challenge-already-issued", challengeExpiresAt, challengeExpiresIn }`
   - Header: `Retry-After`
+- 429 response when backoff is active for the requester:
+  - Body: `{ error: "challenge-backoff", backoffExpiresAt, backoffExpiresIn }`
+  - Header: `Retry-After`
 
 `POST /challenge/verify`
 
@@ -110,6 +113,7 @@ app.use(router);
 - `challenge` (required): the engine instance.
 - `tokenManager` (required): token manager from `createChallengeTokenManager`.
 - `onChallenge`: optional callback that returns a unique key for the requester (session id, IP, etc). When provided, only one active challenge per key is allowed; additional `GET /challenge` requests return `429` until the prior challenge is verified or expires.
+- `backoff`: optional per-key verification backoff (requires `onChallenge`). Defaults to a 10-minute window, reset on success, and a schedule of `[0, 0, 2000, 5000, 10000, 20000, 35000, 55000, 75000]` ms (cap 75s). Set `enabled: false` to disable when `onChallenge` is present.
 - `onVerified`: optional callback; return `undefined` for default success token, object to override TTL/payload, or `null` to skip.
 - `validateSuccessToken`: optional validator for decoded success token payloads.
 - `debug`: `"none"` | `"error"` | `"info"` (default `"none"`).

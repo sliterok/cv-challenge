@@ -27,6 +27,7 @@ CV Challenge is a lightweight interactive verification flow that feels more like
 - Without a valid success token, `/challenge` responses are padded to ~5 seconds total.
 - The React plugin handles the success token and shows a countdown during cold start.
 - `onChallenge` can enforce one active challenge per requester (session/IP). When set, new `/challenge` requests return `429` with `Retry-After` until the prior challenge is verified or expires.
+- Per-key backoff on failed verifications can add cooldowns (default window 10 minutes, cap 75s); use `onChallenge` to identify the requester.
 
 ## Defaults
 
