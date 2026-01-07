@@ -2,6 +2,7 @@ import cv from 'opencv4nodejs';
 import ffmpeg from 'fluent-ffmpeg';
 import Stream, { PassThrough } from 'node:stream';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
+import type { ChallengeGenerateOptions } from './express-adapter.js';
 import type { Hitbox } from './types.js';
 
 type Vec3 = { x: number; y: number; z: number };
@@ -203,7 +204,14 @@ class Motion3DChallenge {
     this.fillLight = normalize({ x: 0.6, y: -0.15, z: 0.7 });
   }
 
-  async generate(): Promise<{
+  private getFailureScale(failureCount: number): number {
+    if (!Number.isFinite(failureCount) || failureCount <= 0) return 1;
+    const safeFailures = Math.max(0, failureCount);
+    const scale = 1 - Math.log1p(safeFailures) * 0.1;
+    return clamp(scale, 0.7, 1);
+  }
+
+  async generate(options: ChallengeGenerateOptions = {}): Promise<{
     videoBuffer: Buffer;
     hitbox: Hitbox;
     debug: {
@@ -215,7 +223,8 @@ class Motion3DChallenge {
       timingMs: { render: number; encode: number; total: number };
     };
   }> {
-    const { objects, targetId, movingCount, staticCount } = this.createScene();
+    const failureScale = this.getFailureScale(options.failureCount ?? 0);
+    const { objects, targetId, movingCount, staticCount } = this.createScene(failureScale);
     const hitbox = this.computeTargetHitbox(objects, targetId);
     const startTime = process.hrtime.bigint();
     const videoStream = new PassThrough();
@@ -291,7 +300,7 @@ class Motion3DChallenge {
     );
   }
 
-  private createScene(): SceneInfo {
+  private createScene(scaleFactor = 1): SceneInfo {
     const movingCount = Math.floor(this.objectCount / 2);
     const staticCount = this.objectCount - movingCount;
     const motionFlags = shuffle([
@@ -299,6 +308,7 @@ class Motion3DChallenge {
       ...Array(staticCount).fill(false)
     ]);
     const positions = this.createGridPositions(this.objectCount);
+    const sizeScale = clamp(scaleFactor, 0.6, 1);
 
     const objects = positions.map((position, index) => {
       const isMoving = motionFlags[index];
@@ -319,10 +329,10 @@ class Motion3DChallenge {
         moveSpeed: isMoving ? randRange(0.9, 1.9) : 0,
         rotationAxis: randomUnitVector(),
         rotationSpeed: isMoving ? randRange(0.9, 1.8) : randRange(0.08, 0.32),
-        scaleBase: randRange(0.62, 0.95),
-        scaleAmp: isMoving ? randRange(0.08, 0.18) : randRange(0.025, 0.06),
+        scaleBase: randRange(0.62, 0.95) * sizeScale,
+        scaleAmp: (isMoving ? randRange(0.08, 0.18) : randRange(0.025, 0.06)) * sizeScale,
         scaleSpeed: isMoving ? randRange(0.8, 1.6) : randRange(0.18, 0.45),
-        morphAmp: isMoving ? randRange(0.1, 0.24) : randRange(0.02, 0.06),
+        morphAmp: (isMoving ? randRange(0.1, 0.24) : randRange(0.02, 0.06)) * sizeScale,
         morphSpeed: isMoving ? randRange(1.1, 2.1) : randRange(0.2, 0.55),
         color: randomColor(),
         seed
@@ -529,6 +539,7 @@ export type {
   ChallengeBackoffOptions,
   ChallengeTokenManager,
   ChallengeEngine,
+  ChallengeGenerateOptions,
   ChallengeDebugLevel,
   SuccessTokenValidationContext
 } from './express-adapter.js';

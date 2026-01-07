@@ -56,8 +56,12 @@ export type ChallengeVerifyContext = {
   y: number;
 };
 
+export type ChallengeGenerateOptions = {
+  failureCount?: number;
+};
+
 export type ChallengeEngine = {
-  generate: () => Promise<{
+  generate: (options?: ChallengeGenerateOptions) => Promise<{
     videoBuffer: Buffer;
     hitbox: Hitbox;
     debug: {
@@ -428,18 +432,22 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       pruneActiveChallenges();
       pruneBackoffState();
       const challengeKey = await resolveChallengeKey(req, res);
+      let failureCount = 0;
       if (challengeKey) {
         const now = Date.now();
         const backoffState = getBackoffState(challengeKey);
-        if (backoffState && backoffState.blockedUntil > now) {
-          const backoffMs = Math.max(0, backoffState.blockedUntil - now);
-          res.set('Retry-After', String(Math.ceil(backoffMs / 1000)));
-          res.status(429).json({
-            error: 'challenge-backoff',
-            backoffExpiresAt: backoffState.blockedUntil,
-            backoffExpiresIn: backoffMs
-          });
-          return;
+        if (backoffState) {
+          failureCount = backoffState.failures;
+          if (backoffState.blockedUntil > now) {
+            const backoffMs = Math.max(0, backoffState.blockedUntil - now);
+            res.set('Retry-After', String(Math.ceil(backoffMs / 1000)));
+            res.status(429).json({
+              error: 'challenge-backoff',
+              backoffExpiresAt: backoffState.blockedUntil,
+              backoffExpiresIn: backoffMs
+            });
+            return;
+          }
         }
         const active = activeChallenges.get(challengeKey);
         if (active && active.expiresAt > now) {
@@ -476,7 +484,7 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
           hasValidSuccessToken = false;
         }
       }
-      const { videoBuffer, hitbox, debug: renderDebug } = await challenge.generate();
+      const { videoBuffer, hitbox, debug: renderDebug } = await challenge.generate({ failureCount });
       const { token, jti, expiresAt, expiresInMs } = await tokenManager.issueToken(hitbox);
       if (challengeKey) {
         registerActiveChallenge(challengeKey, jti, expiresAt);

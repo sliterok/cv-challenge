@@ -19,7 +19,7 @@ pnpm add @cv-challenge/server
 import Motion3DChallenge from '@cv-challenge/server';
 
 const engine = new Motion3DChallenge(180, 60, 3, 20);
-const { videoBuffer, hitbox, debug } = await engine.generate();
+const { videoBuffer, hitbox, debug } = await engine.generate({ failureCount: 3 });
 const ok = engine.validate({ x: 42, y: 12 }, hitbox);
 ```
 
@@ -29,6 +29,8 @@ Constructor defaults:
 - height: 60
 - durationSec: 3
 - objectCount: 20
+
+`generate` optionally accepts `{ failureCount }` to shrink cube scale as failures rise.
 
 ## Express adapter
 
