@@ -10,6 +10,8 @@ const tokenManager = createChallengeTokenManager({ secret, tokenTtlSec: 20 });
 const challengeRouter = createChallengeExpressRouter({
   challenge: challengeEngine,
   tokenManager,
+  backoff: { scheduleMs: [0, 200, 500] },
+  onChallenge: ({ req }) => req.ip,
   onVerified: async ({ x, y }) => {
     console.log('[verify] success', { x, y });
     return undefined;
