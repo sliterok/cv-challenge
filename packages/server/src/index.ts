@@ -207,8 +207,15 @@ class Motion3DChallenge {
   private getFailureScale(failureCount: number): number {
     if (!Number.isFinite(failureCount) || failureCount <= 0) return 1;
     const safeFailures = Math.max(0, failureCount);
-    const scale = 1 - Math.log1p(safeFailures) * 0.1;
-    return clamp(scale, 0.7, 1);
+    const scale = 1 - Math.log1p(safeFailures) * 0.4;
+    return clamp(scale, 0.3, 1);
+  }
+
+  private getFailureCountScale(failureCount: number): number {
+    if (!Number.isFinite(failureCount) || failureCount <= 0) return 1;
+    const safeFailures = Math.max(0, failureCount);
+    const scale = 1 + Math.log1p(safeFailures) * 0.45;
+    return clamp(scale, 1, 2.5);
   }
 
   async generate(options: ChallengeGenerateOptions = {}): Promise<{
@@ -224,7 +231,9 @@ class Motion3DChallenge {
     };
   }> {
     const failureScale = this.getFailureScale(options.failureCount ?? 0);
-    const { objects, targetId, movingCount, staticCount } = this.createScene(failureScale);
+    const countScale = this.getFailureCountScale(options.failureCount ?? 0);
+    const objectCount = Math.max(1, Math.round(this.objectCount * countScale));
+    const { objects, targetId, movingCount, staticCount } = this.createScene(failureScale, objectCount);
     const hitbox = this.computeTargetHitbox(objects, targetId);
     const startTime = process.hrtime.bigint();
     const videoStream = new PassThrough();
@@ -300,15 +309,19 @@ class Motion3DChallenge {
     );
   }
 
-  private createScene(scaleFactor = 1): SceneInfo {
-    const movingCount = Math.floor(this.objectCount / 2);
-    const staticCount = this.objectCount - movingCount;
+  private createScene(scaleFactor = 1, countOverride?: number): SceneInfo {
+    const objectCount =
+      typeof countOverride === 'number' && Number.isFinite(countOverride)
+        ? Math.max(1, Math.round(countOverride))
+        : this.objectCount;
+    const movingCount = Math.floor(objectCount / 2);
+    const staticCount = objectCount - movingCount;
     const motionFlags = shuffle([
       ...Array(movingCount).fill(true),
       ...Array(staticCount).fill(false)
     ]);
-    const positions = this.createGridPositions(this.objectCount);
-    const sizeScale = clamp(scaleFactor, 0.6, 1);
+    const positions = this.createGridPositions(objectCount);
+    const sizeScale = clamp(scaleFactor, 0.3, 1);
 
     const objects = positions.map((position, index) => {
       const isMoving = motionFlags[index];

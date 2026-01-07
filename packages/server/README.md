@@ -30,7 +30,7 @@ Constructor defaults:
 - durationSec: 3
 - objectCount: 20
 
-`generate` optionally accepts `{ failureCount }` to shrink cube scale as failures rise.
+`generate` optionally accepts `{ failureCount }` to shrink cube scale and increase cube count as failures rise.
 
 ## Express adapter
 
