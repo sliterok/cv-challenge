@@ -1,5 +1,11 @@
 # @cv-challenge/server
 
+## 1.3.0
+
+### Minor Changes
+
+- increase cube count and decrease cube size on failures
+
 ## 1.2.2
 
 ### Patch Changes
