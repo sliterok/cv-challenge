@@ -207,8 +207,8 @@ class Motion3DChallenge {
   private getFailureScale(failureCount: number): number {
     if (!Number.isFinite(failureCount) || failureCount <= 0) return 1;
     const safeFailures = Math.max(0, failureCount);
-    const scale = 1 - Math.log1p(safeFailures) * 0.4;
-    return clamp(scale, 0.3, 1);
+    const scale = 1 - Math.log1p(safeFailures) * 0.55;
+    return clamp(scale, 0.28, 1);
   }
 
   private getFailureCountScale(failureCount: number): number {
@@ -342,7 +342,7 @@ class Motion3DChallenge {
         moveSpeed: isMoving ? randRange(0.9, 1.9) : 0,
         rotationAxis: randomUnitVector(),
         rotationSpeed: isMoving ? randRange(0.9, 1.8) : randRange(0.08, 0.32),
-        scaleBase: randRange(0.62, 0.95) * sizeScale,
+        scaleBase: randRange(0.52, 0.85) * sizeScale,
         scaleAmp: (isMoving ? randRange(0.08, 0.18) : randRange(0.025, 0.06)) * sizeScale,
         scaleSpeed: isMoving ? randRange(0.8, 1.6) : randRange(0.18, 0.45),
         morphAmp: (isMoving ? randRange(0.1, 0.24) : randRange(0.02, 0.06)) * sizeScale,
