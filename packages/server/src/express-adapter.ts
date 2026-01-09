@@ -508,7 +508,9 @@ export const createChallengeExpressRouter = <TPayload extends Record<string, unk
       res.set('X-Challenge-Token', token);
       res.set('X-Challenge-Expires-At', String(expiresAt));
       res.set('X-Challenge-Expires-In', String(expiresInMs));
+      
       res.send(videoBuffer);
+      
       logInfo('[challenge] generated', { token: token.slice(0, 12), ...renderDebug });
     } catch (error) {
       logError('[challenge] generation failed', error);

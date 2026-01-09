@@ -8,6 +8,29 @@ import type { Hitbox } from './types.js';
 type Vec3 = { x: number; y: number; z: number };
 type Rgb = { r: number; g: number; b: number };
 
+type NoiseParticle = {
+  type: 'particle';
+  x: number;
+  y: number;
+  size: number;
+  val: number;
+  driftX: number;
+  driftY: number;
+};
+
+type NoiseLine = {
+  type: 'line';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  val: number;
+  driftX: number;
+  driftY: number;
+};
+
+type NoiseObject = NoiseParticle | NoiseLine;
+
 type SceneObject = {
   id: number;
   isMoving: boolean;
@@ -244,7 +267,7 @@ class Motion3DChallenge {
         `-s ${this.width}x${this.height}`,
         `-r ${this.fps}`
       ])
-      .videoCodec('libvpx-vp9')
+      .videoCodec('libvpx')
       .outputOptions([
         '-pix_fmt yuva420p',
         '-auto-alt-ref 0',
@@ -252,8 +275,7 @@ class Motion3DChallenge {
         '-row-mt 1',
         '-tile-columns 2',
         '-frame-parallel 1',
-        '-deadline realtime',
-        '-cpu-used 6',
+        '-cpu-used 2',
         '-crf 30',
         '-b:v 0'
       ])
@@ -264,7 +286,7 @@ class Motion3DChallenge {
     const frame = new cv.Mat(this.height, this.width, cv.CV_8UC4, [0, 0, 0, 0]);
 
     // Generate persistent noise objects
-    const noiseObjects = Array.from({ length: 30 }, () => ({
+    const noiseObjects: NoiseObject[] = (Array.from({ length: 30 }, () => ({
       type: 'particle',
       x: randRange(0, this.width),
       y: randRange(0, this.height),
@@ -272,17 +294,21 @@ class Motion3DChallenge {
       val: randRange(40, 100),
       driftX: randRange(-2, 2),
       driftY: randRange(-2, 2)
-    })).concat(
-      Array.from({ length: 6 }, () => ({
-        type: 'line',
-        x1: randRange(0, this.width),
-        y1: randRange(0, this.height),
-        x2: randRange(0, this.width), // re-randomize for endpoint
-        y2: randRange(0, this.height),
-        val: 120,
-        driftX: randRange(-1, 1),
-        driftY: randRange(-1, 1)
-      })).map(l => ({ ...l, x2: l.x1 + randRange(-30, 30), y2: l.y1 + randRange(-30, 30) }))
+    })) as NoiseObject[]).concat(
+      Array.from({ length: 6 }, () => {
+        const x1 = randRange(0, this.width);
+        const y1 = randRange(0, this.height);
+        return {
+          type: 'line',
+          x1,
+          y1,
+          x2: x1 + randRange(-30, 30),
+          y2: y1 + randRange(-30, 30),
+          val: 120,
+          driftX: randRange(-1, 1),
+          driftY: randRange(-1, 1)
+        };
+      }) as NoiseObject[]
     );
 
     for (let t = 0; t < this.totalFrames; t += 1) {
@@ -544,7 +570,7 @@ class Motion3DChallenge {
     }
   }
 
-  private renderForegroundNoise(frame: cv.Mat, time: number, noiseObjects: any[]): void {
+  private renderForegroundNoise(frame: cv.Mat, time: number, noiseObjects: NoiseObject[]): void {
     for (const obj of noiseObjects) {
       if (obj.type === 'particle') {
         const x = (obj.x + obj.driftX * time + this.width) % this.width;
