@@ -1,5 +1,11 @@
 # @cv-challenge/server
 
+## 1.3.2
+
+### Patch Changes
+
+- make colors static, remove target color boost and improve cube count scaling
+
 ## 1.3.1
 
 ### Patch Changes

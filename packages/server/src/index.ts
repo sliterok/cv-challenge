@@ -158,8 +158,7 @@ const hslToRgb = (h: number, s: number, l: number): Rgb => {
   };
 };
 
-const randomColor = (): Rgb => {
-  const h = Math.random();
+const randomStaticColor = (h: number): Rgb => {
   const s = randRange(0.6, 0.92);
   const l = randRange(0.52, 0.7);
   return hslToRgb(h, s, l);
@@ -214,8 +213,8 @@ class Motion3DChallenge {
   private getFailureCountScale(failureCount: number): number {
     if (!Number.isFinite(failureCount) || failureCount <= 0) return 1;
     const safeFailures = Math.max(0, failureCount);
-    const scale = 1 + Math.log1p(safeFailures) * 0.45;
-    return clamp(scale, 1, 2.5);
+    const scale = 1 + Math.log1p(safeFailures) * 2;
+    return clamp(scale, 1, 6);
   }
 
   async generate(options: ChallengeGenerateOptions = {}): Promise<{
@@ -323,6 +322,7 @@ class Motion3DChallenge {
     const positions = this.createGridPositions(objectCount);
     const sizeScale = clamp(scaleFactor, 0.3, 1);
 
+    const randomColorHue = Math.random();
     const objects = positions.map((position, index) => {
       const isMoving = motionFlags[index];
       const seed = randRange(0, 1000);
@@ -347,7 +347,7 @@ class Motion3DChallenge {
         scaleSpeed: isMoving ? randRange(0.8, 1.6) : randRange(0.18, 0.45),
         morphAmp: (isMoving ? randRange(0.1, 0.24) : randRange(0.02, 0.06)) * sizeScale,
         morphSpeed: isMoving ? randRange(1.1, 2.1) : randRange(0.2, 0.55),
-        color: randomColor(),
+        color: randomStaticColor(randomColorHue),
         seed
       };
     });
@@ -506,8 +506,7 @@ class Motion3DChallenge {
 
         const key = Math.max(0, dot(normal, this.keyLight));
         const fill = Math.max(0, dot(normal, this.fillLight));
-        const boost = obj.isTarget ? 0.22 : 0;
-        const intensity = clamp(this.ambient + this.keyStrength * key + this.fillStrength * fill + boost, 0.15, 1.45);
+        const intensity = clamp(this.ambient + this.keyStrength * key + this.fillStrength * fill, 0.15, 1.45);
         const color = shadeColor(obj.color, intensity);
 
         const projected = face.map(idx => this.projectPoint(worldVertices[idx]));
