@@ -1,5 +1,11 @@
 # @cv-challenge/server
 
+## 1.4.0
+
+### Minor Changes
+
+- add noise objects and fix codex issues
+
 ## 1.3.3
 
 ### Patch Changes
