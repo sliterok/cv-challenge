@@ -262,12 +262,34 @@ class Motion3DChallenge {
     const bufferStream = ffmpegProcess.pipe(new PassThrough());
     const mask = new cv.Mat(this.height, this.width, cv.CV_8UC1, 0);
     const frame = new cv.Mat(this.height, this.width, cv.CV_8UC4, [0, 0, 0, 0]);
-    const clearColor = new cv.Vec4(0, 0, 0, 0);
+
+    // Generate persistent noise objects
+    const noiseObjects = Array.from({ length: 30 }, () => ({
+      type: 'particle',
+      x: randRange(0, this.width),
+      y: randRange(0, this.height),
+      size: Math.floor(randRange(1, 3)),
+      val: randRange(40, 100),
+      driftX: randRange(-2, 2),
+      driftY: randRange(-2, 2)
+    })).concat(
+      Array.from({ length: 6 }, () => ({
+        type: 'line',
+        x1: randRange(0, this.width),
+        y1: randRange(0, this.height),
+        x2: randRange(0, this.width), // re-randomize for endpoint
+        y2: randRange(0, this.height),
+        val: 120,
+        driftX: randRange(-1, 1),
+        driftY: randRange(-1, 1)
+      })).map(l => ({ ...l, x2: l.x1 + randRange(-30, 30), y2: l.y1 + randRange(-30, 30) }))
+    );
 
     for (let t = 0; t < this.totalFrames; t += 1) {
       const time = t / this.fps;
-      frame.setTo(clearColor);
+      this.renderBackground(frame, time);
       this.renderFrame(frame, mask, objects, time);
+      this.renderForegroundNoise(frame, time, noiseObjects);
       videoStream.write(Buffer.from(frame.getData()));
     }
 
@@ -485,6 +507,70 @@ class Motion3DChallenge {
       y: (point.y * this.camera.fy) / point.z + this.camera.cy,
       z: point.z
     };
+  }
+
+  private renderBackground(frame: cv.Mat, time: number): void {
+    // Fill with transparent background
+    frame.setTo(new cv.Vec4(0, 0, 0, 0));
+
+    // Draw moving grid lines
+    const gridSize = 24;
+    const numLinesX = Math.ceil(this.width / gridSize);
+    const numLinesY = Math.ceil(this.height / gridSize);
+    const lineColor = new cv.Vec4(45, 45, 50, 255);
+
+    for (let i = 0; i <= numLinesX; i += 1) {
+      const xBase = i * gridSize;
+      const noiseVal = this.noise2D(xBase * 0.15, time * 0.4);
+      const x = xBase + noiseVal * 12;
+      frame.drawLine(
+        new cv.Point2(x, 0),
+        new cv.Point2(x, this.height),
+        lineColor,
+        1
+      );
+    }
+
+    for (let i = 0; i <= numLinesY; i += 1) {
+      const yBase = i * gridSize;
+      const noiseVal = this.noise2D(yBase * 0.15, time * 0.4 + 100);
+      const y = yBase + noiseVal * 12;
+      frame.drawLine(
+        new cv.Point2(0, y),
+        new cv.Point2(this.width, y),
+        lineColor,
+        1
+      );
+    }
+  }
+
+  private renderForegroundNoise(frame: cv.Mat, time: number, noiseObjects: any[]): void {
+    for (const obj of noiseObjects) {
+      if (obj.type === 'particle') {
+        const x = (obj.x + obj.driftX * time + this.width) % this.width;
+        const y = (obj.y + obj.driftY * time + this.height) % this.height;
+        frame.drawCircle(
+          new cv.Point2(x, y),
+          obj.size,
+          new cv.Vec4(obj.val, obj.val, obj.val, 255),
+          -1
+        );
+      } else if (obj.type === 'line') {
+        const dx = obj.driftX * time;
+        const dy = obj.driftY * time;
+        const x1 = (obj.x1 + dx + this.width) % this.width;
+        const y1 = (obj.y1 + dy + this.height) % this.height;
+        const x2 = x1 + (obj.x2 - obj.x1); // Keep relative vector
+        const y2 = y1 + (obj.y2 - obj.y1);
+
+        frame.drawLine(
+          new cv.Point2(x1, y1),
+          new cv.Point2(x2, y2),
+          new cv.Vec4(obj.val, obj.val, obj.val, 255),
+          1
+        );
+      }
+    }
   }
 
   private renderFrame(frame: cv.Mat, mask: cv.Mat, objects: SceneObject[], time: number): void {

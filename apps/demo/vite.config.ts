@@ -12,7 +12,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/challenge': 'http://localhost:3000'
+      '/challenge': 'http://localhost:3030'
     }
   }
 });

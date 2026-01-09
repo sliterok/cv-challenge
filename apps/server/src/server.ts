@@ -20,7 +20,7 @@ const challengeRouter = createChallengeExpressRouter({
 
 app.use(challengeRouter);
 
-const port = Number(process.env.PORT) || 3000;
+const port = Number(process.env.PORT) || 3030;
 app.listen(port, () => {
   console.log(`Challenge server running at http://localhost:${port}`);
 });
