@@ -286,27 +286,27 @@ class Motion3DChallenge {
     const frame = new cv.Mat(this.height, this.width, cv.CV_8UC4, [0, 0, 0, 0]);
 
     // Generate persistent noise objects
-    const noiseObjects: NoiseObject[] = (Array.from({ length: 30 }, () => ({
+    const noiseObjects: NoiseObject[] = (Array.from({ length: 60 }, () => ({
       type: 'particle',
       x: randRange(0, this.width),
       y: randRange(0, this.height),
       size: Math.floor(randRange(1, 3)),
       val: randRange(40, 100),
-      driftX: randRange(-2, 2),
-      driftY: randRange(-2, 2)
+      driftX: randRange(-4, 4),
+      driftY: randRange(-4, 4)
     })) as NoiseObject[]).concat(
-      Array.from({ length: 6 }, () => {
+      Array.from({ length: 40 }, () => {
         const x1 = randRange(0, this.width);
         const y1 = randRange(0, this.height);
         return {
           type: 'line',
           x1,
           y1,
-          x2: x1 + randRange(-30, 30),
-          y2: y1 + randRange(-30, 30),
+          x2: x1 + randRange(-50, 50),
+          y2: y1 + randRange(-50, 50),
           val: 120,
-          driftX: randRange(-1, 1),
-          driftY: randRange(-1, 1)
+          driftX: randRange(-2, 2),
+          driftY: randRange(-2, 2)
         };
       }) as NoiseObject[]
     );
